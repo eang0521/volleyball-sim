@@ -19,6 +19,53 @@ var VB = globalThis.VB || (globalThis.VB = {});
   const lastName = (n) => n.split(' ').slice(-1)[0];
   const ZONE_ROLE = { 1: 'RB', 2: 'RF · setter', 3: 'MF', 4: 'LF · hitter', 5: 'LB', 6: 'MB' };
 
+  // Parse a pasted roster: one player per line — number, name, height, then the 9 ratings in editor
+  // column order (JMP REA AGI HIT PAS SET BLK SRV AWR). A header row (or any extra trailing column) is ignored.
+  // Tab-separated (spreadsheet copy) or space-separated both work.
+  function parseRoster(text, cz) {
+    const isNum = (s) => s !== '' && Number.isFinite(Number(s));
+    const players = [], errors = [], notes = [];
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    lines.forEach((line, i) => {
+      let cells;
+      if (line.includes('\t')) cells = line.split('\t').map((c) => c.trim()).filter((c) => c !== '');
+      else {
+        const toks = line.split(/\s+/);
+        let j = toks.length;
+        while (j > 1 && isNum(toks[j - 1])) j--;
+        cells = [toks[0], toks.slice(1, j).join(' '), ...toks.slice(j)];
+      }
+      if (!isNum(cells[0])) {
+        if (i > 0) errors.push(`Line ${i + 1}: expected a jersey number first, found "${cells[0]}".`);
+        return; // first line: treat as a header row
+      }
+      const nums = cells.slice(2).map(Number);
+      if (!cells[1] || isNum(cells[1])) { errors.push(`Line ${i + 1}: missing player name.`); return; }
+      if (nums.length < 10 || nums.slice(0, 10).some((n) => !Number.isFinite(n))) {
+        errors.push(`Line ${i + 1} (${cells[1]}): expected a height and 9 ratings after the name, found ${nums.length} numbers.`);
+        return;
+      }
+      const stats = {};
+      VB.STAT_KEYS.forEach((k, s) => { stats[k] = nums[1 + s]; });
+      players.push({ number: Math.round(Number(cells[0])), name: cells[1].slice(0, 30), height: nums[0], stats });
+    });
+    // Units / scale fix-ups
+    for (const p of players) {
+      if (cz && p.height > 100) { p.height = p.height / 2.54; notes.height = 'Heights looked like centimetres and were converted to inches.'; }
+      if (!cz && p.height < 100) { p.height = p.height * 2.54; notes.height = 'Heights looked like inches and were converted to centimetres.'; }
+      p.height = Math.round(p.height);
+    }
+    const maxStat = Math.max(0, ...players.flatMap((p) => Object.values(p.stats)));
+    for (const p of players) for (const k of VB.STAT_KEYS) {
+      let v = p.stats[k];
+      if (!cz && maxStat <= 10) v *= 10;
+      p.stats[k] = Math.round(Math.min(cz ? 10 : 99, Math.max(cz ? 0 : 1, v)));
+    }
+    if (!cz && maxStat <= 10 && players.length) notes.scale = 'Ratings looked like a 0–10 scale and were multiplied by 10.';
+    return { players, errors, notes: Object.values(notes) };
+  }
+  VB.parseRoster = parseRoster;
+
   class UI {
     constructor(app) {
       this.app = app;
@@ -218,12 +265,14 @@ var VB = globalThis.VB || (globalThis.VB = {});
     // ---------------------------------------------------------- editor
     openEditor() {
       this.draft = JSON.parse(JSON.stringify(this.app.teamsData));
+      this.pasteOpen = {}; this.pasteText = {}; this.pasteMsg = {};
       this.renderEditor();
       const dlg = $('#editor');
       dlg.returnValue = '';
       dlg.showModal();
-      dlg.onclose = () => {
-        if (dlg.returnValue === 'apply') {
+      // Apply on submit (synchronous) rather than on the dialog's async close event.
+      $('#editor-form').onsubmit = (e) => {
+        if (e.submitter && e.submitter.value === 'apply') {
           this.readEditor();
           this.app.newTeams(this.draft);
         }
@@ -249,6 +298,12 @@ var VB = globalThis.VB || (globalThis.VB = {});
             <select data-f="level" aria-label="Random level" ${cz ? 'hidden' : ''}>${levels}</select>
             <button type="button" data-act="rand-team">🎲 Randomize team</button>
             <button type="button" data-act="auto-lineup" title="Reorder players into positions by their strengths">Auto lineup</button>
+            <button type="button" data-act="paste-toggle" aria-expanded="${!!(this.pasteOpen && this.pasteOpen[ti])}">📋 Paste roster</button>
+          </div>
+          <div class="paste" ${this.pasteOpen && this.pasteOpen[ti] ? '' : 'hidden'}>
+            <p class="hint">Paste 6 rows (copied from a spreadsheet works): <b>#, name, height ${cz ? '(in)' : '(cm)'}, ${keys.map((k) => VB.STAT_LABELS[k]).join(', ')}</b>. Rows go into P1–P6 in order.</p>
+            <textarea data-f="paste" rows="6" spellcheck="false" aria-label="Paste roster for ${esc(t.name)}" placeholder="${cz ? '4\tPeter Shargel\t68\t4\t3\t4\t3\t4\t3\t5\t4\t3' : '7\tAlex Rivera\t188\t70\t65\t60\t72\t58\t55\t61\t66\t63'}">${esc((this.pasteText && this.pasteText[ti]) || '')}</textarea>
+            <div class="row gap"><button type="button" class="primary" data-act="paste-load">Load roster</button><span class="paste-msg ${this.pasteMsg && this.pasteMsg[ti] && this.pasteMsg[ti].err ? 'err' : ''}">${esc((this.pasteMsg && this.pasteMsg[ti] && this.pasteMsg[ti].text) || '')}</span></div>
           </div>
           <div class="tbl-wrap"><table class="ed">
             <thead><tr><th>Pos</th><th>#</th><th>Name</th><th>Ht ${cz ? 'in' : 'cm'}</th>${keys.map((k) => `<th title="${k}">${VB.STAT_LABELS[k]}</th>`).join('')}<th>OVR</th><th></th></tr></thead>
@@ -283,7 +338,23 @@ var VB = globalThis.VB || (globalThis.VB = {});
         if (!casual()) VB.store.set('vb.level', level);
         const tr = btn.closest('tr[data-p]');
         const pi = tr ? +tr.dataset.p : -1;
+        this.pasteOpen = this.pasteOpen || {}; this.pasteText = this.pasteText || {}; this.pasteMsg = this.pasteMsg || {};
+        this.pasteText[ti] = $('textarea[data-f=paste]', teamEl).value;
         switch (btn.dataset.act) {
+          case 'paste-toggle': this.pasteOpen[ti] = !this.pasteOpen[ti]; break;
+          case 'paste-load': {
+            const res = parseRoster(this.pasteText[ti], casual());
+            if (res.errors.length || res.players.length < 6) {
+              const msg = res.errors.length ? res.errors.join(' ') : `Found ${res.players.length} player${res.players.length === 1 ? '' : 's'} — need 6.`;
+              this.pasteMsg[ti] = { err: true, text: msg };
+              break;
+            }
+            team.players = res.players.slice(0, 6).map((p, i) => Object.assign({ skin: (team.players[i] && team.players[i].skin) || VB.SKINS[i % VB.SKINS.length] }, p));
+            const extra = res.players.length > 6 ? ` Only the first 6 of ${res.players.length} rows were used.` : '';
+            this.pasteMsg[ti] = { err: false, text: `Loaded ${team.players.map((p) => p.name.split(' ')[0]).join(', ')}.${[extra, ...res.notes, 'Click “Apply & start new match” to play.'].filter(Boolean).map((x) => ' ' + x.trim()).join('')}` };
+            this.pasteText[ti] = '';
+            break;
+          }
           case 'rand-team': {
             const nt = VB.randomTeam(level, team.name, team.color);
             team.players = nt.players;
