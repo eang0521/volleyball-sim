@@ -16,6 +16,13 @@ var VB = globalThis.VB || (globalThis.VB = {});
   const fmtHeight = (h) => (casual() ? `${Math.floor(h / 12)}′${h % 12}″` : `${h} cm`);
   const levelDefault = () => (casual() ? 'casual' : VB.store.get('vb.level', 'intermediate'));
 
+  // Preset team colours offered in the editor (a custom colour can still be picked).
+  const TEAM_COLORS = [
+    ['Red', '#cc0000'], ['Blue', '#0066ff'], ['Green', '#009900'], ['Yellow', '#ffcc00'],
+    ['Orange', '#ff6600'], ['Purple', '#9933cc'], ['Pink', '#ff66cc'], ['Cyan', '#00cccc'],
+    ['Brown', '#996633'], ['Gray', '#999999'], ['White', '#ffffff'], ['Black', '#333333'],
+  ];
+
   const lastName = (n) => n.split(' ').slice(-1)[0];
   const ZONE_ROLE = { 1: 'RB', 2: 'RF · setter', 3: 'MF', 4: 'LF · hitter', 5: 'LB', 6: 'MB' };
 
@@ -300,6 +307,9 @@ var VB = globalThis.VB || (globalThis.VB = {});
             <button type="button" data-act="auto-lineup" title="${cz ? 'Order players so every rotation has a setter, hitters, blockers and passers spread out' : 'Reorder players into positions by their strengths'}">${cz ? '⚖️ Balance rotations' : 'Auto lineup'}</button>
             <button type="button" data-act="paste-toggle" aria-expanded="${!!(this.pasteOpen && this.pasteOpen[ti])}">📋 Paste roster</button>
           </div>
+          <div class="swatches" role="group" aria-label="Preset team colours">
+            ${TEAM_COLORS.map(([name, hex]) => `<button type="button" class="swatch${t.color.toLowerCase() === hex ? ' on' : ''}" data-act="color" data-color="${hex}" style="background:${hex}" title="${name}" aria-label="${name}" aria-pressed="${t.color.toLowerCase() === hex}"></button>`).join('')}
+          </div>
           <div class="paste" ${this.pasteOpen && this.pasteOpen[ti] ? '' : 'hidden'}>
             <p class="hint">Paste 6 rows (copied from a spreadsheet works): <b>#, name, height ${cz ? '(in)' : '(cm)'}, ${keys.map((k) => VB.STAT_LABELS[k]).join(', ')}</b>. Rows go into P1–P6 in order.</p>
             <textarea data-f="paste" rows="6" spellcheck="false" aria-label="Paste roster for ${esc(t.name)}" placeholder="${cz ? '4\tPeter Shargel\t68\t4\t3\t4\t3\t4\t3\t5\t4\t3' : '7\tAlex Rivera\t188\t70\t65\t60\t72\t58\t55\t61\t66\t63'}">${esc((this.pasteText && this.pasteText[ti]) || '')}</textarea>
@@ -342,6 +352,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
         this.pasteText[ti] = $('textarea[data-f=paste]', teamEl).value;
         switch (btn.dataset.act) {
           case 'paste-toggle': this.pasteOpen[ti] = !this.pasteOpen[ti]; break;
+          case 'color': team.color = btn.dataset.color; break;
           case 'paste-load': {
             const res = parseRoster(this.pasteText[ti], casual());
             if (res.errors.length || res.players.length < 6) {
