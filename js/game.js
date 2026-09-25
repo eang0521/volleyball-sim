@@ -7,7 +7,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
   const C = VB.C, PH = VB.Physics;
   const DT = C.DT, G = C.G, R = C.R;
 
-  const newBox = () => ({ k: 0, e: 0, ta: 0, a: 0, sa: 0, se: 0, ra: 0, re: 0, dig: 0, bs: 0, ba: 0 });
+  const newBox = () => ({ k: 0, e: 0, ta: 0, a: 0, sa: 0, se: 0, ra: 0, re: 0, dig: 0, bs: 0, ba: 0, bhe: 0 });
 
   // ------------------------------------------------------------------ Player
   class Player {
@@ -179,11 +179,20 @@ var VB = globalThis.VB || (globalThis.VB = {});
       this.lastTouch = null;
       this.contacts = [];
       this.pendingDig = null;
+      this.pendingIllegal = null;
       this.lastBlock = null;
       this.rallyStart = this.time;
       this.path = null;
       this.pathId = (this.pathId || 0) + 1;
-      for (const t of this.teams) t.ai = { plan: null, hit: null, setInfo: null, blockers: [], blockRead: false, nextPlan: 0 };
+      for (const t of this.teams) {
+        t.ai = { plan: null, hit: null, setInfo: null, blockers: [], blockRead: false, nextPlan: 0 };
+        for (const p of t.players) {
+          const e = (1 - p.s.awareness) * (t.profile.fixedRoles ? 0.6 : 0.4);
+          p.formJit = { d: gauss() * e, l: gauss() * e, serveL: 2.4 - rand() * 1.5 };
+        }
+        // Casual teams occasionally mix up who stands where (a likely overlap).
+        t.swapMistake = !t.profile.fixedRoles && rand() < (1 - t.knowledge) * 0.02 ? 1 + Math.floor(rand() * 5) : 0;
+      }
       const server = this.teams[this.serving].at(1);
       this.serve = { player: server, type: this.chooseServeType(server), stage: 'walk' };
       const b = this.ball;
@@ -243,7 +252,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
     formation(t) {
       const serving = t.idx === this.serving;
       const spots = serving
-        ? { 1: null, 2: [1.3, 2.6], 3: [1.3, 0], 4: [1.3, -2.6], 5: [6.2, -2.6], 6: [7.2, 0] }
+        ? { 1: null, 2: [1.3, 2.6], 3: [1.3, 0], 4: [1.3, -2.6], 5: [5.2, -3.0], 6: [5.4, -0.8] }
         : { 1: [6.8, 2.4], 2: [1.1, 2.0], 3: [4.2, 0.3], 4: [4.6, -2.8], 5: [6.8, -2.4], 6: [7.6, 0] };
       // Casual front-row setter waits at the net on serve receive; right front passes instead if not setting.
       const sz = t.fixedSetter ? t.fixedSetter.zone : 0;
@@ -251,14 +260,19 @@ var VB = globalThis.VB || (globalThis.VB = {});
         spots[2] = [4.4, 2.6];
         spots[sz] = [1.1, sz === 3 ? 0.6 : -1.8];
       }
+      if (t.swapMistake && this.phase !== 'rally') {
+        // Two neighbouring players stand in each other's spots.
+        const a = t.swapMistake, b = a === 5 ? 6 : a + 1;
+        if (spots[a] && spots[b]) [spots[a], spots[b]] = [spots[b], spots[a]];
+      }
       for (let z = 1; z <= 6; z++) {
         const p = t.at(z);
         const sp = spots[z];
+        const j = p.formJit || { d: 0, l: 0, serveL: 1.8 };
         if (!sp) {
           const d = this.serve.type === 'topspin' ? 11.4 : this.serve.type === 'jumpfloat' ? 10.4 : this.serve.type === 'underhand' ? 9.4 : 9.7;
-          const w = t.toWorld(d, 2.4 - rand() * 1.5);
-          p.target = w;
-        } else p.target = t.toWorld(sp[0], sp[1]);
+          p.target = t.toWorld(d, j.serveL);
+        } else p.target = t.toWorld(sp[0] + j.d, sp[1] + j.l);
         p.arriveT = null;
       }
     }
@@ -369,11 +383,111 @@ var VB = globalThis.VB || (globalThis.VB = {});
         const hp = sv.handPoint();
         if (b.pos.distXZ(hp) < 0.6 && b.pos.y <= hp.y + 0.1 && b.pos.y >= hp.y - 0.6) hit = true;
       }
-      if (hit) { this.doServe(sv); return; }
+      if (hit) {
+        if (this.callOverlaps()) return;
+        this.doServe(sv);
+        return;
+      }
       if (b.pos.y < 0.5 || this.time - this.phaseStart > 3) {
         // Dropped toss — counts as a service error.
         this.pointTo(this.other(sv.team), 'serveError', sv, `${this.pn(sv)} mishandles the toss`);
       }
+    }
+
+    // Rotational order at the moment of the serve (judged by feet; the server is exempt).
+    findOverlap(t) {
+      const serving = t.idx === this.serving;
+      const L = (z) => { const p = t.at(z); return t.toLocal(p.pos.x, p.pos.z); };
+      for (const [f, b] of [[4, 5], [3, 6], [2, 1]]) {
+        if (serving && b === 1) continue;
+        if (L(f).d >= L(b).d) return [f, b];
+      }
+      for (const [a, b] of [[4, 3], [3, 2], [5, 6], [6, 1]]) {
+        if (serving && (a === 1 || b === 1)) continue;
+        if (L(a).l >= L(b).l) return [a, b];
+      }
+      return null;
+    }
+
+    callOverlaps() {
+      const faults = this.teams.map((t) => this.findOverlap(t));
+      if (!faults[0] && !faults[1]) return false;
+      if (faults[0] && faults[1]) {
+        this.addLog('Both teams out of rotation — replay', null, 'info');
+        this.phase = 'dead'; this.phaseStart = this.time; this.replay = true; this.ball.live = false;
+        return true;
+      }
+      const t = this.teams[faults[0] ? 0 : 1], [a, b] = faults[t.idx];
+      const pa = t.at(a), pb = t.at(b);
+      this.pointTo(this.other(t), 'fault', null, `Overlap — ${t.name} out of rotation (${this.pn(pa)} / ${this.pn(pb)})`);
+      return true;
+    }
+
+    // Solid bodies: a ball that hits someone who isn't playing it deflects and counts as a touch.
+    collideBodies() {
+      const b = this.ball, now = this.time, lt = this.lastTouch;
+      for (const t of this.teams) for (const p of t.players) {
+        if (lt && lt.player === p && now - lt.time < 0.3) continue;
+        const dx = b.pos.x - p.pos.x, dz = b.pos.z - p.pos.z;
+        if (Math.abs(dx) > 0.8 || Math.abs(dz) > 0.8) continue;
+        const ly = b.pos.y - p.pos.y;
+        if (ly > p.H + R || ly < -R) continue;
+        const cf = Math.cos(p.facing), sf = Math.sin(p.facing);
+        const lx = dx * cf - dz * sf, lz = dx * sf + dz * cf; // player's local frame (z = forward)
+        const hx = 0.125 * p.H, hz = 0.07 * p.H, top = 0.82 * p.H;
+        let cx = clamp(lx, -hx, hx), cy = clamp(ly, 0, top), cz = clamp(lz, -hz, hz);
+        let nx = lx - cx, ny = ly - cy, nz = lz - cz, d = Math.hypot(nx, ny, nz);
+        let hit = d < R;
+        if (!hit) {
+          // Head
+          const hr = 0.065 * p.H, hy = top + 0.03 * p.H + hr;
+          nx = lx; ny = ly - hy; nz = lz; d = Math.hypot(nx, ny, nz);
+          if (d < R + hr) { hit = true; cx = 0; cy = hy; cz = 0; const k = hr / (d || 1); cx = nx * k; cy = hy + ny * k; cz = nz * k; nx = lx - cx; ny = ly - cy; nz = lz - cz; d = Math.hypot(nx, ny, nz); }
+        }
+        if (!hit) continue;
+        if (d < 1e-6) { nx = -lx || 0; ny = 0.5; nz = -lz || 1; d = Math.hypot(nx, ny, nz); }
+        nx /= d; ny /= d; nz /= d;
+        // Back to world
+        const wx = nx * cf + nz * sf, wz = -nx * sf + nz * cf, wy = ny;
+        const rvx = b.vel.x - p.vel.x, rvy = b.vel.y - p.vel.y, rvz = b.vel.z - p.vel.z;
+        const vn = rvx * wx + rvy * wy + rvz * wz;
+        if (vn >= 0) continue;
+        b.vel.x -= 1.35 * vn * wx; b.vel.y -= 1.35 * vn * wy; b.vel.z -= 1.35 * vn * wz;
+        b.vel.scale(0.8);
+        const wcx = p.pos.x + cx * cf + cz * sf, wcz = p.pos.z - cx * sf + cz * cf;
+        b.pos.set(wcx + wx * (R + 0.01), p.pos.y + cy + wy * (R + 0.01), wcz + wz * (R + 0.01));
+        b.spin.set(gauss() * 6, gauss() * 6, gauss() * 6);
+        b.float = null;
+        this.bodyTouch(p);
+        return true;
+      }
+      return false;
+    }
+
+    bodyTouch(p) {
+      const t = p.team, lt = this.lastTouch;
+      if (lt && lt.kind === 'serve' && lt.team === t) return this.fault(lt, 'fault', `serve hits teammate ${this.pn(p)}`);
+      if (lt && lt.player === p && lt.kind !== 'block') return this.pointTo(this.other(t), 'handling', p, `Double contact — ball hits ${this.pn(p)} again`);
+      const touchesAfter = (lt && lt.team === t ? this.touches[t.idx] : 0) + 1;
+      if (touchesAfter > 3) return this.pointTo(this.other(t), 'handling', p, `Four hits — ball touches ${this.pn(p)}`);
+      this.addLog(`Ball deflects off ${this.pn(p)}`, t, 'info');
+      this.registerContact(p, 'body');
+      this.onBallEvent(0.1);
+    }
+
+    // Referee's call on an overhead contact: lift (carry) or double contact.
+    handlingFault(p, info, touchNo, ballY) {
+      const strict = this.settings.handlingCalls;
+      if (!strict) return null;
+      const miss = (1.05 - p.s.setting) ** 2;
+      const low = ballY < p.H * 0.95;
+      const diff = 1 + Math.max(0, info.vin - 6) * 0.1 + info.reach * 0.8 + (info.dive ? 1 : 0) + (low ? 0.4 : 0);
+      const pLift = 0.012 * miss * diff * (info.reach > 0.6 || low ? 2 : 1) * strict;
+      const pDouble = touchNo === 1 ? 0 : 0.03 * miss * diff * strict; // doubles are legal on the first team contact
+      const r = rand();
+      if (r < pLift) return 'lift';
+      if (r < pLift + pDouble) return 'double';
+      return null;
     }
 
     updateRally() {
@@ -387,6 +501,8 @@ var VB = globalThis.VB || (globalThis.VB = {});
         if (this.checkHit(t)) break;
         if (this.checkPlanContact(t)) break;
       }
+      if (this.phase !== 'rally') return;
+      this.collideBodies();
       if (this.phase !== 'rally') return;
       this.checkPlayerFaults();
       if (now - this.rallyStart > 90 && this.phase === 'rally') {
@@ -486,6 +602,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
           // Over the antenna extension – outside crossing space.
           return this.fault(lt, 'out', `ball crosses above the antenna`);
         }
+        if (this.pendingIllegal) return this.callIllegalAttack();
         for (const t of this.teams) t.ai.nextPlan = 0;
       }
       // Floor
@@ -578,6 +695,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       p.air = true;
       p.jumpKind = kind;
       p.jumpT = this.time;
+      p.takeoff = { x: p.pos.x, z: p.pos.z };
       const f = p.fwd;
       // Block jumps are standing jumps (lower than an approach jump).
       const h = kind === 'block' ? p.jumpH * VB.BLOCK_JUMP : p.jumpH;
@@ -759,7 +877,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
         let sc = Math.min(slack, 0.6) * 1.2;
         if (type === 'over') {
           sc -= Math.abs(y - overT) * 1.2;
-          if (purpose === 'set') sc += 1.0;
+          if (purpose === 'set') sc += t.profile.fixedRoles ? 1.0 : 1.8 * p.s.setting - 0.1;
           else if (purpose === 'free') sc += 0.2;
           else if (speed < 9) sc += 0.3;
           else sc -= 0.6;
@@ -786,6 +904,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       const r = { x: 0, z: -sg }; // right-hand direction when facing the net
       const drift0 = 0.9;
       const timingErr = gauss() * (1.08 - (hitter.s.hitting + hitter.s.awareness) / 2) * 0.07;
+      const minTake = hitter.front ? 0.2 : rand() < 0.7 + 0.3 * hitter.s.awareness ? C.ATTACK_LINE + 0.1 : 2.2;
       let best = null;
       const i0 = Math.max(0, Math.ceil((now + 0.05 - path.t0) / DT));
       for (let i = i0; i < path.n; i += 2) {
@@ -802,7 +921,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
         const safe = (distNet - 0.4) / tpk; // drift so that landing stays ~0.4m off the net
         if (rand() < 0.4 + hitter.s.awareness * 0.6) drift = clamp(Math.min(drift, safe), 0, drift0);
         const take = { x: bodyX - fx * drift * tpk, z: bodyZ };
-        if (take.x * sg < 0.2) continue;
+        if (take.x * sg < minTake) continue;
         const takeT = tt - tpk + timingErr;
         const dist = Math.hypot(take.x - hitter.pos.x, take.z - hitter.pos.z);
         const need = moveTime(dist, hitter) * 0.92;
@@ -1050,9 +1169,13 @@ var VB = globalThis.VB || (globalThis.VB = {});
       }
       const purpose = pl.purpose;
       t.ai.plan = null;
+      const call = type === 'over' ? this.handlingFault(p, info, pl.touchNo, y) : null;
       if (purpose === 'pass') this.doPass(p, info);
       else if (purpose === 'set') this.doSet(p, info);
       else this.doFree(p, info);
+      if (call && this.phase === 'rally') {
+        this.pointTo(this.other(t), 'handling', p, call === 'lift' ? `Lift called on ${this.pn(p)}` : `Double contact called on ${this.pn(p)}`);
+      }
       return true;
     }
 
@@ -1105,7 +1228,14 @@ var VB = globalThis.VB || (globalThis.VB = {});
       return false;
     }
 
+    callIllegalAttack() {
+      const p = this.pendingIllegal.player;
+      this.pendingIllegal = null;
+      return this.pointTo(this.other(p.team), 'fault', p, `Illegal back-row attack by ${this.pn(p)} (took off inside the 3 m line)`, null, p);
+    }
+
     resolveBlock(t, p, top) {
+      if (this.pendingIllegal) return this.callIllegalAttack();
       const b = this.ball, sg = t.sgn, now = this.time;
       const lt = this.lastTouch;
       const attacker = lt.player;
@@ -1161,6 +1291,12 @@ var VB = globalThis.VB || (globalThis.VB = {});
 
     registerContact(p, kind) {
       const t = p.team, opp = this.other(t), lt = this.lastTouch;
+      // Back-row player sending a ball that is entirely above the net from the front zone: illegal if it crosses.
+      this.pendingIllegal = null;
+      if (!p.front && kind !== 'serve' && kind !== 'block' && kind !== 'body' && this.ball.pos.y - R > C.netTop) {
+        const foot = p.air && p.takeoff ? p.takeoff : p.pos;
+        if (t.toLocal(foot.x, foot.z).d <= C.ATTACK_LINE) this.pendingIllegal = { player: p };
+      }
       const newPoss = !lt || lt.team !== t;
       if (newPoss) {
         this.touches[t.idx] = 0;
@@ -1246,7 +1382,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       const w = t.toWorld(loc.d, loc.l);
       const target = new V3(w.x, hc - 0.1, w.z);
       const dist = b.pos.distXZ(target);
-      let T = (type === 'quick' ? 0.62 : type === 'medium' ? 0.95 : 1.25) + dist * 0.03;
+      let T = (type === 'quick' ? 0.62 : type === 'medium' ? 0.95 : type === 'back' ? 1.15 : 1.25) + dist * 0.03;
       T *= 1 + gauss() * err * 0.07;
       b.vel.copy(PH.solveLaunch(b.pos, target, T, null));
       b.spin.set(gauss(), gauss(), gauss());
@@ -1280,22 +1416,25 @@ var VB = globalThis.VB || (globalThis.VB = {});
       const sl = t.toLocal(setter.pos.x, setter.pos.z);
       let best = null;
       for (const p of t.players) {
-        if (p === setter || !p.front || p.air || now < p.downUntil - 0.3) continue;
+        if (p === setter || p.air || now < p.downUntil - 0.3) continue;
+        if (!p.front && quality < 0.7) continue; // back-row sets need a decent first two contacts
         const z = p.zone;
         let type, local;
         const pl = t.toLocal(p.pos.x, p.pos.z);
-        if (z === 3 && quality >= 0.95 && pl.d < 2.2) { type = 'quick'; local = { d: 0.6, l: clamp(sl.l - 1.2, -3.5, 3.5) }; }
+        if (!p.front) { type = 'back'; local = { d: 3.6, l: z === 6 ? 0 : z === 1 ? 2.6 : -2.6 }; }
+        else if (z === 3 && quality >= 0.95 && pl.d < 2.2) { type = 'quick'; local = { d: 0.6, l: clamp(sl.l - 1.2, -3.5, 3.5) }; }
         else if (z === 3) { type = 'medium'; local = { d: 0.8, l: -0.5 }; }
         else if (z === 4) { type = 'high'; local = { d: 0.9, l: -3.5 }; }
         else { type = 'high'; local = { d: 0.9, l: 3.5 }; }
-        if (type !== 'quick' && Math.abs(pl.l - local.l) > 3.5) local.l = (local.l + pl.l) / 2;
-        const T = type === 'quick' ? 0.62 : type === 'medium' ? 0.95 : 1.25;
+        if (type !== 'quick' && type !== 'back' && Math.abs(pl.l - local.l) > 3.5) local.l = (local.l + pl.l) / 2;
+        const T = type === 'quick' ? 0.62 : type === 'medium' ? 0.95 : type === 'back' ? 1.15 : 1.25;
         const w = t.toWorld(local.d + 0.3 + 0.35, local.l);
         const dist = Math.hypot(w.x - p.pos.x, w.z - p.pos.z);
         const feasible = moveTime(dist, p) * (type === 'quick' ? 0.8 : 1) < T - p.tPeak + 0.15;
         let sc = know * (p.s.hitting * 2 + p.s.jumping * 0.5) * (t.profile.fixedRoles ? 1 : 2.5) + (feasible ? 0 : -3);
         if (type === 'quick') sc += 0.25;
         if (type === 'medium') sc -= 0.3;
+        if (type === 'back') sc -= t.profile.fixedRoles ? 0.7 : 2.4;
         // Avoid the side with more blockers.
         const lw = t.toWorld(local.d, local.l);
         let blk = 0;
@@ -1485,7 +1624,9 @@ var VB = globalThis.VB || (globalThis.VB = {});
         }
         return '';
       };
-      if (netFaultPlayer) {
+      if (reason === 'handling') {
+        culprit.box.bhe++;
+      } else if (netFaultPlayer) {
         netFaultPlayer.box.e++;
       } else if (reason === 'serveError') {
         culprit.box.se++;
@@ -1584,6 +1725,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
     netHeight: 2.43,
     switchSides: true,
     frontRowSetter: true,
+    handlingCalls: 1,
     pointDelay: 2.4,
     serveDelay: 1.6,
     setBreak: 4,

@@ -180,22 +180,22 @@ var VB = globalThis.VB || (globalThis.VB = {});
 
     renderBox() {
       const g = this.game;
-      const cols = ['#', 'Player', 'Pts', 'K', 'E', 'TA', 'Hit%', 'A', 'SA', 'SE', 'RE', 'Dig', 'BS', 'BA'];
+      const cols = ['#', 'Player', 'Pts', 'K', 'E', 'TA', 'Hit%', 'A', 'SA', 'SE', 'RE', 'Dig', 'BS', 'BA', 'BHE'];
       const fmtPct = (k, e, ta) => (ta ? ((k - e) / ta).toFixed(3).replace(/^0/, '').replace(/^-0/, '-') : '—');
       const html = g.teams.map((t) => {
-        const tot = { k: 0, e: 0, ta: 0, a: 0, sa: 0, se: 0, re: 0, dig: 0, bs: 0, ba: 0, pts: 0 };
+        const tot = { k: 0, e: 0, ta: 0, a: 0, sa: 0, se: 0, re: 0, dig: 0, bs: 0, ba: 0, bhe: 0, pts: 0 };
         const rows = t.players.map((p) => {
           const b = p.box;
           const pts = b.k + b.sa + b.bs + b.ba * 0.5;
           for (const k of Object.keys(tot)) tot[k] += k === 'pts' ? pts : b[k];
-          return `<tr><td>${p.number}</td><td>${esc(lastName(p.name))}</td><td>${pts}</td><td>${b.k}</td><td>${b.e}</td><td>${b.ta}</td><td>${fmtPct(b.k, b.e, b.ta)}</td><td>${b.a}</td><td>${b.sa}</td><td>${b.se}</td><td>${b.re}</td><td>${b.dig}</td><td>${b.bs}</td><td>${b.ba}</td></tr>`;
+          return `<tr><td>${p.number}</td><td>${esc(lastName(p.name))}</td><td>${pts}</td><td>${b.k}</td><td>${b.e}</td><td>${b.ta}</td><td>${fmtPct(b.k, b.e, b.ta)}</td><td>${b.a}</td><td>${b.sa}</td><td>${b.se}</td><td>${b.re}</td><td>${b.dig}</td><td>${b.bs}</td><td>${b.ba}</td><td>${b.bhe || 0}</td></tr>`;
         }).join('');
         const T = tot;
         return `<div class="box-team"><h3><span class="dot" style="background:${t.color}"></span>${esc(t.name)}</h3>
           <div class="tbl-wrap"><table class="box"><thead><tr>${cols.map((c) => `<th>${c}</th>`).join('')}</tr></thead>
-          <tbody>${rows}<tr class="tot"><td></td><td>Team</td><td>${T.pts}</td><td>${T.k}</td><td>${T.e}</td><td>${T.ta}</td><td>${fmtPct(T.k, T.e, T.ta)}</td><td>${T.a}</td><td>${T.sa}</td><td>${T.se}</td><td>${T.re}</td><td>${T.dig}</td><td>${T.bs}</td><td>${T.ba}</td></tr></tbody></table></div></div>`;
+          <tbody>${rows}<tr class="tot"><td></td><td>Team</td><td>${T.pts}</td><td>${T.k}</td><td>${T.e}</td><td>${T.ta}</td><td>${fmtPct(T.k, T.e, T.ta)}</td><td>${T.a}</td><td>${T.sa}</td><td>${T.se}</td><td>${T.re}</td><td>${T.dig}</td><td>${T.bs}</td><td>${T.ba}</td><td>${T.bhe}</td></tr></tbody></table></div></div>`;
       }).join('');
-      $('#boxscore').innerHTML = html + `<p class="legend">K kills · E attack errors (incl. blocked, net faults) · TA attack attempts · A assists · SA aces · SE service errors · RE reception errors · BS solo blocks · BA block assists</p>`;
+      $('#boxscore').innerHTML = html + `<p class="legend">K kills · E attack errors (incl. blocked, net faults) · TA attack attempts · A assists · SA aces · SE service errors · RE reception errors · BS solo blocks · BA block assists · BHE ball-handling errors (lifts, doubles, four hits)</p>`;
     }
 
     renderTeams() {
