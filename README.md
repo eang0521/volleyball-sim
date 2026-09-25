@@ -16,8 +16,9 @@ Open `casual.html` (or add `?mode=casual` to the URL) for a version tuned for a 
 - Hits are weaker, jumps lower and awareness lower. Passes shank more often and fly farther, so players sometimes have to run a long way to chase a ball down and bump it back into play. Weak servers serve underhand.
 - Positions are loose. Teams still rotate clockwise, but each rotation the team decides who sets, and players set to whoever they think should hit. A team's **awareness** decides how often it gets these right: an aware team puts its best setter in and feeds its best hitters, while an unaware one falls back on "whoever's in right front sets" or picks someone at random.
 - **Setter always plays from the front row** (a casual setting, on by default): each rotation the setter is one of the three front-row players, usually middle front or right front. Awareness still decides whether it's the best setter up there.
-- Casual games don't call **lifts** or **overlap**. Double contacts, four hits and the other rules still apply.
+- There's no ref in casual games, so **lifts, double contacts and overlap aren't called**. Only clear-cut calls happen: in/out, four hits, net and centre-line touches, antennas, and balls crossing outside or under the net.
 - **Paste a roster**: in *Edit teams & stats…*, click **📋 Paste roster** for a team and paste 6 rows copied from a spreadsheet. Each row is number, name, height, then JMP REA AGI HIT PAS SET BLK SRV AWR. Rows fill positions P1–P6 in order. This works in the competitive version too, with heights in cm and ratings from 1 to 99.
+- **⚖️ Balance rotations** (in the editor) tries every possible order and picks the one whose weakest rotation is strongest. Every front row gets a setter option and hitters or blockers, and every back row gets passers. Random casual teams are balanced this way too.
 - Casual mode keeps its own teams and settings, which default to best of 3 on a 2.35 m (co-ed) net.
 
 ## Controls

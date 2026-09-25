@@ -104,7 +104,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       // Settings
       const f = $('#settings-form');
       for (const el of $$('[data-casual]')) el.hidden = !casual();
-      if (casual()) $('[data-label-handling]').textContent = 'Double-contact calls (casual games don’t call lifts or overlap)';
+      for (const el of $$('[data-competitive]')) el.hidden = casual();
       this.fillSettings();
       f.addEventListener('change', () => {
         const s = {};
@@ -297,7 +297,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
             <input type="text" data-f="name" value="${esc(t.name)}" aria-label="Team name" maxlength="40">
             <select data-f="level" aria-label="Random level" ${cz ? 'hidden' : ''}>${levels}</select>
             <button type="button" data-act="rand-team">🎲 Randomize team</button>
-            <button type="button" data-act="auto-lineup" title="Reorder players into positions by their strengths">Auto lineup</button>
+            <button type="button" data-act="auto-lineup" title="${cz ? 'Order players so every rotation has a setter, hitters, blockers and passers spread out' : 'Reorder players into positions by their strengths'}">${cz ? '⚖️ Balance rotations' : 'Auto lineup'}</button>
             <button type="button" data-act="paste-toggle" aria-expanded="${!!(this.pasteOpen && this.pasteOpen[ti])}">📋 Paste roster</button>
           </div>
           <div class="paste" ${this.pasteOpen && this.pasteOpen[ti] ? '' : 'hidden'}>
@@ -360,7 +360,15 @@ var VB = globalThis.VB || (globalThis.VB = {});
             team.players = nt.players;
             break;
           }
-          case 'auto-lineup': team.players = VB.arrangeLineup(team.players); break;
+          case 'auto-lineup': {
+            if (!casual()) { team.players = VB.arrangeLineup(team.players); break; }
+            team.players = VB.balancedLineup(team.players);
+            const first = (p) => p.name.split(' ')[0];
+            const rots = VB.lineupRotations(team.players).map((r, i) => `R${i + 1}: ${r.front.map(first).join('/')}`);
+            this.pasteOpen[ti] = true;
+            this.pasteMsg[ti] = { err: false, text: `Balanced. Front row each rotation — ${rots.join(' · ')}` };
+            break;
+          }
           case 'up': [team.players[pi - 1], team.players[pi]] = [team.players[pi], team.players[pi - 1]]; break;
           case 'down': [team.players[pi + 1], team.players[pi]] = [team.players[pi], team.players[pi + 1]]; break;
           case 'rand-p': team.players[pi] = Object.assign(VB.randomPlayer(level, team.players[pi].number), {}); break;

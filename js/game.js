@@ -468,7 +468,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
     bodyTouch(p) {
       const t = p.team, lt = this.lastTouch;
       if (lt && lt.kind === 'serve' && lt.team === t) return this.fault(lt, 'fault', `serve hits teammate ${this.pn(p)}`);
-      if (lt && lt.player === p && lt.kind !== 'block') return this.pointTo(this.other(t), 'handling', p, `Double contact — ball hits ${this.pn(p)} again`);
+      if (lt && lt.player === p && lt.kind !== 'block' && this.profile.fixedRoles) return this.pointTo(this.other(t), 'handling', p, `Double contact — ball hits ${this.pn(p)} again`);
       const touchesAfter = (lt && lt.team === t ? this.touches[t.idx] : 0) + 1;
       if (touchesAfter > 3) return this.pointTo(this.other(t), 'handling', p, `Four hits — ball touches ${this.pn(p)}`);
       this.addLog(`Ball deflects off ${this.pn(p)}`, t, 'info');
@@ -479,7 +479,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
     // Referee's call on an overhead contact: lift (carry) or double contact.
     handlingFault(p, info, touchNo, ballY) {
       const strict = this.settings.handlingCalls;
-      if (!strict) return null;
+      if (!strict || !this.profile.fixedRoles) return null; // casual: no ref, no handling calls
       const miss = (1.05 - p.s.setting) ** 2;
       const low = ballY < p.H * 0.95;
       const diff = 1 + Math.max(0, info.vin - 6) * 0.1 + info.reach * 0.8 + (info.dive ? 1 : 0) + (low ? 0.4 : 0);

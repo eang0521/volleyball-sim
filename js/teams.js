@@ -81,13 +81,74 @@ var VB = globalThis.VB || (globalThis.VB = {});
     return [server, setter, middle, hitter, last, libLike];
   }
 
+  // Casual lineup: spread setters, hitters, blockers and passers so every rotation is playable.
+  // Tries all 720 orders. In each rotation the front row is 3 consecutive players in the
+  // circular order (zones 2-3-4) and the back row is the other 3; we maximise the weakest
+  // rotation, then the average, and penalise uneven rotations.
+  function rotationStrength(front, back) {
+    const st = (p, k) => p.stats[k];
+    const hAdj = (p) => (p.height - 68) * 0.15;
+    const setVal = (p) => st(p, 'setting') + st(p, 'awareness') * 0.3;
+    const hitVal = (p) => st(p, 'hitting') + st(p, 'jumping') * 0.4 + hAdj(p);
+    const blkVal = (p) => st(p, 'blocking') + st(p, 'jumping') * 0.3 + hAdj(p) * 1.3;
+    const passVal = (p) => st(p, 'passing') + st(p, 'reactions') * 0.4 + st(p, 'agility') * 0.3;
+    const setter = front.reduce((a, p) => (setVal(p) > setVal(a) ? p : a));
+    const hitters = front.filter((p) => p !== setter);
+    return setVal(setter) * 1.0 +
+      hitters.reduce((s, p) => s + hitVal(p), 0) * 0.5 +
+      front.reduce((s, p) => s + blkVal(p), 0) / 3 * 0.35 +
+      back.reduce((s, p) => s + passVal(p), 0) * 0.3;
+  }
+
+  function lineupRotations(order) {
+    const out = [];
+    for (let r = 0; r < 6; r++) {
+      const at = (zone) => order[(zone - 1 + r) % 6]; // after r rotations, zone z holds order[z-1+r]
+      out.push({ front: [at(2), at(3), at(4)], back: [at(1), at(5), at(6)] });
+    }
+    return out;
+  }
+
+  function balanceScore(order) {
+    const s = lineupRotations(order).map((x) => rotationStrength(x.front, x.back));
+    const mean = s.reduce((a, b) => a + b, 0) / 6;
+    const sd = Math.sqrt(s.reduce((a, b) => a + (b - mean) ** 2, 0) / 6);
+    return Math.min(...s) + 0.25 * mean - 0.5 * sd;
+  }
+
+  function balancedLineup(players) {
+    let best = null, bestScore = -Infinity;
+    const perm = (arr, k) => {
+      if (k === arr.length) {
+        const sc = balanceScore(arr);
+        if (sc > bestScore + 1e-9) { bestScore = sc; best = arr.slice(); }
+        return;
+      }
+      for (let i = k; i < arr.length; i++) {
+        [arr[k], arr[i]] = [arr[i], arr[k]];
+        perm(arr, k + 1);
+        [arr[k], arr[i]] = [arr[i], arr[k]];
+      }
+    };
+    perm(players.slice(), 0);
+    // Same circular order, but start in the rotation that's strongest overall with a good server at P1.
+    let start = 0, startScore = -Infinity;
+    for (let r = 0; r < 6; r++) {
+      const o = best.slice(r).concat(best.slice(0, r));
+      const rot = lineupRotations(o)[0];
+      const sc = rotationStrength(rot.front, rot.back) + o[0].stats.serving * 0.3;
+      if (sc > startScore) { startScore = sc; start = r; }
+    }
+    return best.slice(start).concat(best.slice(0, start));
+  }
+
   function randomTeam(level, name, color) {
     const nums = shuffle(Array.from({ length: 24 }, (_, i) => i + 1)).slice(0, 6);
     const players = nums.map((n) => randomPlayer(level, n));
     return {
       name: name || pick(CITIES) + ' ' + pick(MASCOTS),
       color: color || pick(COLORS),
-      players: arrangeLineup(players),
+      players: level === 'casual' ? balancedLineup(players) : arrangeLineup(players),
     };
   }
 
@@ -108,6 +169,6 @@ var VB = globalThis.VB || (globalThis.VB = {});
     return VB.MODE === 'casual' ? avg.toFixed(1) : Math.round(avg);
   }
 
-  Object.assign(VB, { randomPlayer, randomTeam, randomTeams, arrangeLineup, overall, SKINS, COLORS });
+  Object.assign(VB, { randomPlayer, randomTeam, randomTeams, arrangeLineup, balancedLineup, lineupRotations, rotationStrength, overall, SKINS, COLORS });
   VB.rand01 = rand;
 })();
