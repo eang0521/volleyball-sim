@@ -9,6 +9,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
     jumping: 'JMP', reactions: 'REA', agility: 'AGI', hitting: 'HIT', passing: 'PAS',
     setting: 'SET', blocking: 'BLK', serving: 'SRV', awareness: 'AWR',
   };
+  VB.CASUAL_POSITION_LABELS = ['P1 · right back (serves first)', 'P2 · right front', 'P3 · middle front', 'P4 · left front', 'P5 · left back', 'P6 · middle back'];
   VB.POSITION_LABELS = ['P1 · RB (serves first)', 'P2 · RF (setter)', 'P3 · MF', 'P4 · LF (hitter)', 'P5 · LB', 'P6 · MB'];
 
   VB.SKILL_LEVELS = {
@@ -31,7 +32,19 @@ var VB = globalThis.VB || (globalThis.VB = {});
   const COLORS = ['#e63946', '#1d7fe0', '#2a9d4f', '#f4a261', '#8e44ad', '#f1c40f', '#16a3a3', '#e84393', '#d35400', '#ecf0f1'];
   const SKINS = ['#f1c7a5', '#e0ac85', '#c68a5e', '#a86b43', '#7d4a2c', '#5c3620'];
 
+  // Casual players: ratings 0-10, height in inches.
+  function randomCasualPlayer(number) {
+    const talent = gauss() * 1.1;
+    const stats = {};
+    for (const k of VB.STAT_KEYS) stats[k] = Math.round(clamp(4.5 + talent + gauss() * 1.8, 0, 10));
+    const height = Math.round(clamp(68 + gauss() * 3.5, 58, 80));
+    stats.blocking = Math.round(clamp(stats.blocking + (height - 68) * 0.2, 0, 10));
+    stats.agility = Math.round(clamp(stats.agility - (height - 68) * 0.1, 0, 10));
+    return { name: pick(FIRST) + ' ' + pick(LAST), number, height, stats, skin: pick(SKINS) };
+  }
+
   function randomPlayer(level, number) {
+    if (level === 'casual') return randomCasualPlayer(number);
     const L = VB.SKILL_LEVELS[level] || VB.SKILL_LEVELS.intermediate;
     const talent = gauss() * L.sd * 0.5; // overall talent shared by all stats
     const stats = {};
@@ -91,7 +104,8 @@ var VB = globalThis.VB || (globalThis.VB = {});
   function overall(p) {
     let sum = 0;
     for (const k of VB.STAT_KEYS) sum += p.stats[k];
-    return Math.round(sum / VB.STAT_KEYS.length);
+    const avg = sum / VB.STAT_KEYS.length;
+    return VB.MODE === 'casual' ? avg.toFixed(1) : Math.round(avg);
   }
 
   Object.assign(VB, { randomPlayer, randomTeam, randomTeams, arrangeLineup, overall, SKINS, COLORS });

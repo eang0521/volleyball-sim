@@ -7,14 +7,16 @@ for (const f of ['util.js', 'physics.js', 'teams.js', 'game.js']) {
 }
 const VB = globalThis.VB;
 const matches = +process.argv[2] || 3;
-const level = process.argv[3] || 'intermediate';
+const level = process.argv[3] || "intermediate";
+const mode = level === "casual" ? "casual" : "competitive";
+VB.MODE = mode;
 
 const agg = {};
 const bump = (k, n = 1) => (agg[k] = (agg[k] || 0) + n);
 let totalRallyTime = 0, totalContacts = 0, rallies = 0;
 const t0 = Date.now();
 for (let m = 0; m < matches; m++) {
-  const g = new VB.Game(VB.randomTeams(level), {});
+  const g = new VB.Game(VB.randomTeams(level), mode === "casual" ? { netHeight: 2.35 } : {}, mode);
   let lastPhase = g.phase, rallyStart = 0, steps = 0;
   while (g.phase !== 'over' && steps < 240 * 60 * 180) {
     g.update(VB.C.DT);

@@ -6,10 +6,15 @@ var VB = globalThis.VB || (globalThis.VB = {});
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+  // Casual mode keeps its own saved teams/settings under a separate key prefix.
+  const key = (k) => (VB.MODE === 'casual' ? k.replace(/^vb\./, 'vbc.') : k);
   VB.store = {
-    get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } },
+    get(k, d) { try { const v = localStorage.getItem(key(k)); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(key(k), JSON.stringify(v)); } catch (e) { /* storage unavailable */ } },
   };
+  const casual = () => VB.MODE === 'casual';
+  const fmtHeight = (h) => (casual() ? `${Math.floor(h / 12)}′${h % 12}″` : `${h} cm`);
+  const levelDefault = () => (casual() ? 'casual' : VB.store.get('vb.level', 'intermediate'));
 
   const lastName = (n) => n.split(' ').slice(-1)[0];
   const ZONE_ROLE = { 1: 'RB', 2: 'RF · setter', 3: 'MF', 4: 'LF · hitter', 5: 'LB', 6: 'MB' };
@@ -42,7 +47,11 @@ var VB = globalThis.VB || (globalThis.VB = {});
       for (const [k, v] of Object.entries(VB.SKILL_LEVELS)) rl.add(new Option(v.label, k));
       rl.value = VB.store.get('vb.level', 'intermediate');
       rl.onchange = () => VB.store.set('vb.level', rl.value);
-      $('#btn-random-teams').onclick = () => app.newTeams(VB.randomTeams(rl.value));
+      $('#btn-random-teams').onclick = () => app.newTeams(VB.randomTeams(casual() ? 'casual' : rl.value));
+      if (casual()) rl.closest('label').hidden = true;
+      const ml = $('#mode-link');
+      ml.href = casual() ? './' : './?mode=casual';
+      ml.textContent = casual() ? 'Switch to the competitive version →' : 'Switch to the casual version →';
       $('#btn-edit-teams').onclick = () => this.openEditor();
 
       // Settings
@@ -122,7 +131,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       $('#sb-sets-a').textContent = left.sets;
       $('#sb-sets-b').textContent = right.sets;
       const s = g.settings;
-      $('#sb-info').textContent = g.phase === 'over' ? 'Final' : `Set ${g.setNo}${g.isDecidingSet ? ' (deciding)' : ''} · to ${g.setTarget}${s.winBy2 ? ', win by 2' : ''}`;
+      $('#sb-info').textContent = (casual() ? 'Casual · ' : '') + (g.phase === 'over' ? 'Final' : `Set ${g.setNo}${g.isDecidingSet ? ' (deciding)' : ''} · to ${g.setTarget}${s.winBy2 ? ', win by 2' : ''}`);
       this.updateBanner();
       if (g.logVersion !== this.logV) { this.logV = g.logVersion; this.renderLog(); }
       if (g.statsVersion !== this.statsV) {
@@ -193,13 +202,15 @@ var VB = globalThis.VB || (globalThis.VB = {});
       $('#team-summaries').innerHTML = g.teams.map((t) => {
         const cell = (z) => {
           const p = t.at(z);
-          return `<div><b>${p.number}</b>${esc(lastName(p.name))}<br><small>${ZONE_ROLE[z]}</small></div>`;
+          const role = casual() ? (p === t.setter() ? 'setting' : z >= 2 && z <= 4 ? 'front' : 'back') : ZONE_ROLE[z];
+          return `<div${casual() && p === t.setter() ? ' class="setter"' : ''}><b>${p.number}</b>${esc(lastName(p.name))}<br><small>${role}</small></div>`;
         };
-        const roster = t.players.map((p, i) => `<tr><td class="num">P${i + 1}</td><td>#${p.number} ${esc(p.name)}</td><td class="num">${p.data.height} cm</td><td class="num"><b>${VB.overall(p.data)}</b> OVR</td></tr>`).join('');
-        return `<div class="team-sum"><h3><span class="dot" style="background:${t.color}"></span>${esc(t.name)}</h3>
+        const roster = t.players.map((p, i) => `<tr><td class="num">P${i + 1}</td><td>#${p.number} ${esc(p.name)}</td><td class="num">${fmtHeight(p.data.height)}</td><td class="num"><b>${VB.overall(p.data)}</b> OVR</td></tr>`).join('');
+        const know = casual() ? `<p class="hint">Knows its roles: <b>${Math.round(t.knowledge * 100)}%</b> (from team awareness). Setting this rotation: #${t.setter().number} ${esc(lastName(t.setter().name))}.</p>` : '';
+        return `<div class="team-sum"><h3><span class="dot" style="background:${t.color}"></span>${esc(t.name)}</h3>${know}
           <div class="rot"><div class="net"></div>${cell(4)}${cell(3)}${cell(2)}${cell(5)}${cell(6)}${cell(1)}</div>
           <table class="roster">${roster}</table></div>`;
-      }).join('') + '<p class="hint">Rotation shows current court positions (net at top). Teams rotate clockwise each time they win the serve back.</p>';
+      }).join('') + `<p class="hint">Rotation shows current court positions (net at top). Teams rotate clockwise each time they win the serve back.${casual() ? ' Casual teams pick a setter each rotation — teams with better awareness usually pick their best setter and set their best hitters.' : ''}</p>`;
     }
 
     // ---------------------------------------------------------- editor
@@ -220,31 +231,38 @@ var VB = globalThis.VB || (globalThis.VB = {});
     renderEditor() {
       const keys = VB.STAT_KEYS;
       const levels = Object.entries(VB.SKILL_LEVELS).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
+      const cz = casual();
+      const smin = cz ? 0 : 1, smax = cz ? 10 : 99;
+      const hmin = cz ? 54 : 150, hmax = cz ? 86 : 225;
+      const posLabels = cz ? VB.CASUAL_POSITION_LABELS : VB.POSITION_LABELS;
+      $('#editor .ed-head .hint').textContent = cz
+        ? 'Rows are the starting rotation (P1 serves first). Positions are loose — each rotation the team decides who sets, based on its awareness. Ratings are 0–10; heights are in inches.'
+        : 'Rows are the starting rotation: P1 serves first, P2 (right front) usually sets, P4 (left front) usually hits. Any player can play any role. Ratings are 1–99.';
       const wrap = $('#editor-teams');
       wrap.innerHTML = this.draft.map((t, ti) => `
         <div class="ed-team" data-team="${ti}">
           <div class="ed-team-head">
             <input type="color" data-f="color" value="${esc(t.color)}" aria-label="Team colour">
             <input type="text" data-f="name" value="${esc(t.name)}" aria-label="Team name" maxlength="40">
-            <select data-f="level" aria-label="Random level">${levels}</select>
+            <select data-f="level" aria-label="Random level" ${cz ? 'hidden' : ''}>${levels}</select>
             <button type="button" data-act="rand-team">🎲 Randomize team</button>
             <button type="button" data-act="auto-lineup" title="Reorder players into positions by their strengths">Auto lineup</button>
           </div>
           <div class="tbl-wrap"><table class="ed">
-            <thead><tr><th>Pos</th><th>#</th><th>Name</th><th>Ht cm</th>${keys.map((k) => `<th title="${k}">${VB.STAT_LABELS[k]}</th>`).join('')}<th>OVR</th><th></th></tr></thead>
+            <thead><tr><th>Pos</th><th>#</th><th>Name</th><th>Ht ${cz ? 'in' : 'cm'}</th>${keys.map((k) => `<th title="${k}">${VB.STAT_LABELS[k]}</th>`).join('')}<th>OVR</th><th></th></tr></thead>
             <tbody>${t.players.map((p, i) => `
               <tr data-p="${i}">
-                <td class="pos">${VB.POSITION_LABELS[i]}</td>
+                <td class="pos">${posLabels[i]}</td>
                 <td><input type="number" data-k="number" min="0" max="99" value="${p.number}"></td>
                 <td><input type="text" class="nm" data-k="name" value="${esc(p.name)}" maxlength="30"></td>
-                <td><input type="number" data-k="height" min="150" max="225" value="${p.height}"></td>
-                ${keys.map((k) => `<td><input type="number" data-s="${k}" min="1" max="99" value="${p.stats[k]}"></td>`).join('')}
+                <td><input type="number" data-k="height" min="${hmin}" max="${hmax}" value="${p.height}" title="${fmtHeight(p.height)}"></td>
+                ${keys.map((k) => `<td><input type="number" data-s="${k}" min="${smin}" max="${smax}" value="${p.stats[k]}"></td>`).join('')}
                 <td class="ovr">${VB.overall(p)}</td>
                 <td><button type="button" data-act="up" title="Move up" ${i === 0 ? 'disabled' : ''}>↑</button><button type="button" data-act="down" title="Move down" ${i === 5 ? 'disabled' : ''}>↓</button><button type="button" data-act="rand-p" title="Randomize player">🎲</button></td>
               </tr>`).join('')}
             </tbody></table></div>
         </div>`).join('');
-      for (const sel of $$('select[data-f=level]', wrap)) sel.value = VB.store.get('vb.level', 'intermediate');
+      if (!cz) for (const sel of $$('select[data-f=level]', wrap)) sel.value = VB.store.get('vb.level', 'intermediate');
       wrap.oninput = (e) => {
         const tr = e.target.closest('tr[data-p]');
         if (tr) {
@@ -259,8 +277,8 @@ var VB = globalThis.VB || (globalThis.VB = {});
         this.readEditor();
         const teamEl = btn.closest('.ed-team'), ti = +teamEl.dataset.team;
         const team = this.draft[ti];
-        const level = $('select[data-f=level]', teamEl).value;
-        VB.store.set('vb.level', level);
+        const level = casual() ? 'casual' : $('select[data-f=level]', teamEl).value;
+        if (!casual()) VB.store.set('vb.level', level);
         const tr = btn.closest('tr[data-p]');
         const pi = tr ? +tr.dataset.p : -1;
         switch (btn.dataset.act) {
@@ -288,8 +306,9 @@ var VB = globalThis.VB || (globalThis.VB = {});
           const p = t.players[+tr.dataset.p];
           p.name = $('input[data-k=name]', tr).value.trim() || p.name;
           p.number = clampN(+$('input[data-k=number]', tr).value, 0, 99, p.number);
-          p.height = clampN(+$('input[data-k=height]', tr).value, 150, 225, p.height);
-          for (const inp of $$('input[data-s]', tr)) p.stats[inp.dataset.s] = clampN(+inp.value, 1, 99, p.stats[inp.dataset.s]);
+          const cz = casual();
+          p.height = clampN(+$('input[data-k=height]', tr).value, cz ? 54 : 150, cz ? 86 : 225, p.height);
+          for (const inp of $$('input[data-s]', tr)) p.stats[inp.dataset.s] = clampN(+inp.value, cz ? 0 : 1, cz ? 10 : 99, p.stats[inp.dataset.s]);
         }
       }
     }

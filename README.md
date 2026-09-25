@@ -8,6 +8,15 @@ A 6-v-6 indoor volleyball simulation that plays itself. There are 12 players, an
 
 Play the live version at the link above, or run it locally: double-click `index.html`. Three.js loads from a CDN, so you need an internet connection. You can also serve the folder, e.g. `python -m http.server`, and open http://localhost:8000.
 
+## Casual version
+
+Open `casual.html` (or add `?mode=casual` to the URL) for a version tuned for a group that plays for fun. Live: https://eang0521.github.io/volleyball-sim/casual.html
+
+- Ratings are **0–10** and heights are in **inches**. A casual 10/10 plays roughly like a mid-level competitive player.
+- Hits are weaker, jumps lower and awareness lower. Passes shank more often and fly farther, so players sometimes have to run a long way to chase a ball down and bump it back into play. Weak servers serve underhand.
+- Positions are loose. Teams still rotate clockwise, but each rotation the team decides who sets, and players set to whoever they think should hit. A team's **awareness** decides how often it gets these right: an aware team puts its best setter in and feeds its best hitters, while an unaware one falls back on "whoever's in right front sets" or picks someone at random.
+- Casual mode keeps its own teams and settings, which default to best of 3 on a 2.35 m (co-ed) net.
+
 ## Controls
 
 | Key | Action |
@@ -36,4 +45,4 @@ Teams and settings are saved in the browser's local storage.
 
 ## Tuning tools
 
-`node tools/headless.js [matches] [level]` runs whole matches without rendering. It prints outcome rates (kills, aces, errors, blocks, digs) so you can check realism after changing the model. `node tools/diag.js` prints the contact sequence of each rally.
+`node tools/headless.js [matches] [level|casual]` runs whole matches without rendering. It prints outcome rates (kills, aces, errors, blocks, digs) so you can check realism after changing the model. `node tools/diag.js` prints the contact sequence of each rally.

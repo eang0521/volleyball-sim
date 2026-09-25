@@ -1,14 +1,18 @@
 // App bootstrap and the fixed-timestep simulation loop.
 (function () {
   const { store } = VB;
+  VB.MODE = new URLSearchParams(location.search).get('mode') === 'casual' || document.body.dataset.mode === 'casual' ? 'casual' : 'competitive';
+  const CASUAL = VB.MODE === 'casual';
+  if (CASUAL) { document.title = 'Volleyball Sim — Casual'; document.body.classList.add('casual'); }
+  const statMax = CASUAL ? 10 : 99;
 
   function validTeams(d) {
     return Array.isArray(d) && d.length === 2 && d.every((t) => t && t.name && Array.isArray(t.players) && t.players.length === 6 &&
-      t.players.every((p) => p && p.name && p.stats && Number.isFinite(p.height)));
+      t.players.every((p) => p && p.name && p.stats && Number.isFinite(p.height) && Object.values(p.stats).every((v) => v <= statMax)));
   }
 
   const app = {
-    settings: Object.assign({}, VB.DEFAULT_SETTINGS, { showMarkers: false }, store.get('vb.settings', {})),
+    settings: Object.assign({}, VB.DEFAULT_SETTINGS, CASUAL ? { bestOf: 3, netHeight: 2.35 } : {}, { showMarkers: false }, store.get('vb.settings', {})),
     teamsData: null,
     paused: false,
     speed: 1,
@@ -16,7 +20,7 @@
     game: null,
 
     newMatch() {
-      this.game = new VB.Game(this.teamsData, this.settings);
+      this.game = new VB.Game(this.teamsData, this.settings, VB.MODE);
       this.renderer.setGame(this.game);
       this.ui.reset();
       this.acc = 0;
@@ -44,7 +48,7 @@
   };
 
   const saved = store.get('vb.teams', null);
-  app.teamsData = validTeams(saved) ? saved : VB.randomTeams(store.get('vb.level', 'intermediate'));
+  app.teamsData = validTeams(saved) ? saved : VB.randomTeams(CASUAL ? 'casual' : store.get('vb.level', 'intermediate'));
   app.renderer = new VB.Renderer(document.getElementById('stage'));
   app.ui = new VB.UI(app);
   window.app = app;

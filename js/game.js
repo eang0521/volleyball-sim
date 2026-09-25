@@ -19,9 +19,15 @@ var VB = globalThis.VB || (globalThis.VB = {});
       this.name = data.name;
       this.number = data.number;
       this.skin = data.skin || '#e0ac85';
-      this.H = data.height / 100;
-      const s = (this.s = {});
-      for (const k of VB.STAT_KEYS) s[k] = clamp((data.stats[k] ?? 50) / 100, 0.01, 0.99);
+      const prof = team.profile;
+      this.H = prof.heightUnit === 'in' ? data.height * 0.0254 : data.height / 100;
+      // raw = rating as a 0..1 fraction of the mode's scale; s = effective ability used by the engine.
+      const s = (this.s = {}), raw = (this.raw = {});
+      for (const k of VB.STAT_KEYS) {
+        raw[k] = clamp((data.stats[k] ?? prof.statMax / 2) / prof.statMax, 0, 1);
+        const m = prof.map && prof.map[k];
+        s[k] = clamp(m ? m[0] + m[1] * raw[k] : raw[k], 0.01, 0.99);
+      }
       this.reach = 1.31 * this.H; // standing reach
       this.jumpH = 0.33 + 0.62 * s.jumping;
       this.tPeak = Math.sqrt((2 * this.jumpH) / G);
@@ -60,11 +66,16 @@ var VB = globalThis.VB || (globalThis.VB = {});
 
   // ------------------------------------------------------------------ Team
   class Team {
-    constructor(data, idx) {
+    constructor(data, idx, profile) {
       this.idx = idx;
+      this.profile = profile;
       this.name = data.name;
       this.color = data.color;
       this.players = data.players.map((pd, i) => new Player(pd, this, i));
+      // How well the team knows who should set and hit (casual mode); 1 = always knows.
+      const aw = this.players.reduce((a, p) => a + p.raw.awareness, 0) / 6;
+      this.knowledge = profile.fixedRoles ? 1 : clamp(0.1 + 0.9 * aw, 0, 1);
+      this.fixedSetter = null;
       this.order = this.players.slice();
       this.sgn = idx === 0 ? -1 : 1;
       this.score = 0;
@@ -77,7 +88,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
     toWorld(d, l) { return { x: this.sgn * d, z: -this.sgn * l }; }
     toLocal(x, z) { return { d: x * this.sgn, l: -z * this.sgn }; }
     get fwdX() { return -this.sgn; }
-    setter() { return this.at(2); }
+    setter() { return this.fixedSetter || this.at(2); }
   }
 
   function moveTime(d, p) {
@@ -101,9 +112,11 @@ var VB = globalThis.VB || (globalThis.VB = {});
 
   // ------------------------------------------------------------------ Game
   class Game {
-    constructor(teamsData, settings) {
+    constructor(teamsData, settings, mode) {
       this.settings = Object.assign({}, VB.DEFAULT_SETTINGS, settings || {});
-      this.teams = [new Team(teamsData[0], 0), new Team(teamsData[1], 1)];
+      this.mode = VB.PROFILES[mode] ? mode : 'competitive';
+      this.profile = VB.PROFILES[this.mode];
+      this.teams = [new Team(teamsData[0], 0, this.profile), new Team(teamsData[1], 1, this.profile)];
       this.ball = { pos: new V3(0, 1, 0), vel: new V3(), spin: new V3(), float: null, held: null, live: false };
       this.log = [];
       this.logVersion = 0;
@@ -147,6 +160,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       for (const t of this.teams) {
         t.score = 0;
         t.order = t.players.slice();
+        this.pickSetter(t);
       }
       if (this.settings.switchSides && this.setNo > 1) {
         const s = this.setNo % 2 === 1 ? -1 : 1;
@@ -190,11 +204,24 @@ var VB = globalThis.VB || (globalThis.VB = {});
       this.updateHeldBall();
     }
 
+    // Casual teams decide who sets each rotation; whether they pick their real best setter depends on awareness.
+    pickSetter(t) {
+      if (t.profile.fixedRoles) { t.fixedSetter = null; return; }
+      const score = (p) => p.raw.setting * 1.5 + p.raw.awareness * 0.4;
+      const best = t.players.reduce((a, p) => (score(p) > score(a) ? p : a));
+      const r = rand();
+      if (r < t.knowledge) t.fixedSetter = best;
+      else if (r < t.knowledge + (1 - t.knowledge) * 0.6) t.fixedSetter = t.at(2); // habit: right front sets
+      else t.fixedSetter = t.players[Math.floor(rand() * 6)];
+    }
+
     chooseServeType(p) {
+      if (!p.team.profile.fixedRoles && p.raw.serving <= 0.35 && rand() < 0.85 - p.raw.serving) return 'underhand';
       const s = p.s.serving;
       const r = rand();
       if (s > 0.55 && r < (s - 0.45) * 1.3) return 'topspin';
-      if (s > 0.35 && r < 0.75) return 'jumpfloat';
+      const casual = !p.team.profile.fixedRoles;
+      if (casual ? p.raw.serving >= 0.75 && r < 0.4 : s > 0.35 && r < 0.75) return 'jumpfloat';
       return 'float';
     }
 
@@ -208,7 +235,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
         const p = t.at(z);
         const sp = spots[z];
         if (!sp) {
-          const d = this.serve.type === 'topspin' ? 11.4 : this.serve.type === 'jumpfloat' ? 10.4 : 9.7;
+          const d = this.serve.type === 'topspin' ? 11.4 : this.serve.type === 'jumpfloat' ? 10.4 : this.serve.type === 'underhand' ? 9.4 : 9.7;
           const w = t.toWorld(d, 2.4 - rand() * 1.5);
           p.target = w;
         } else p.target = t.toWorld(sp[0], sp[1]);
@@ -265,8 +292,13 @@ var VB = globalThis.VB || (globalThis.VB = {});
       const f = sv.fwd;
       b.pos.set(sv.pos.x + f.x * 0.3, sv.H * 0.8, sv.pos.z + f.z * 0.3);
       b.spin.set(gauss() * 2, gauss() * 2, gauss() * 2);
-      sv.setPose('toss', 0.6, this.time);
-      if (type === 'float') {
+      sv.setPose(type === 'underhand' ? 'ready' : 'toss', 0.6, this.time);
+      if (type === 'underhand') {
+        b.pos.set(sv.pos.x + f.x * 0.4, sv.H * 0.5, sv.pos.z + f.z * 0.4);
+        b.vel.set(fx * 0.1, 1.3, 0);
+        this.serve.contactH = sv.H * 0.42;
+        this.serve.stage = 'float';
+      } else if (type === 'float') {
         b.vel.set(fx * 0.25, 4.0, 0);
         this.serve.contactH = sv.reach * 0.98;
         this.serve.stage = 'float';
@@ -337,7 +369,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       }
       if (this.phase !== 'rally') return;
       this.checkPlayerFaults();
-      if (now - this.rallyStart > 45 && this.phase === 'rally') {
+      if (now - this.rallyStart > 90 && this.phase === 'rally') {
         this.addLog('Rally stopped — replay', null, 'info');
         this.phase = 'dead'; this.phaseStart = now; this.replay = true; this.ball.live = false;
       }
@@ -513,8 +545,8 @@ var VB = globalThis.VB || (globalThis.VB = {});
       p.pos.x += p.vel.x * DT; p.pos.z += p.vel.z * DT;
       // Stay on own side of the centre line and inside the gym.
       if (p.pos.x * t.sgn < 0.15) p.pos.x = t.sgn * 0.15;
-      p.pos.x = clamp(p.pos.x, -14, 14);
-      p.pos.z = clamp(p.pos.z, -8, 8);
+      p.pos.x = clamp(p.pos.x, -15, 15);
+      p.pos.z = clamp(p.pos.z, -9.5, 9.5);
       // Facing
       let want = p.facing;
       if (p.look) want = Math.atan2(p.look.x - p.pos.x, p.look.z - p.pos.z);
@@ -698,7 +730,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
         let dive = false;
         if (slack < 0 || type === 'low') {
           if (type === 'over') continue;
-          const needDive = moveTime(Math.max(0, dist - 1.3), p) + 0.1;
+          const needDive = moveTime(Math.max(0, dist - t.profile.diveReach), p) + 0.1;
           if (tAvail - needDive < 0) continue;
           dive = true;
           slack = tAvail - needDive;
@@ -834,6 +866,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
           const setterPlan = ai.plan && ai.plan.purpose === 'set' ? ai.plan : null;
           for (const p of free) {
             const z = p.zone;
+            if (p === t.setter() && !t.profile.fixedRoles) { go(p, 1.3, 0.8); continue; }
             if (z === 4) go(p, 3.6, -3.9);
             else if (z === 3) {
               const quickReady = setterPlan && setterPlan.t - now < 0.45 && setterPlan.type === 'over';
@@ -943,6 +976,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
         const p = fronts[k];
         const z2 = clamp(zEst + side * 0.62 * ai.blockers.length, -4.2, 4.2);
         const d = Math.abs(p.pos.z - z2) + Math.abs(Math.abs(p.pos.x) - 0.42);
+        if (!t.profile.fixedRoles && rand() > t.knowledge * 0.8) break;
         if (moveTime(d, p) < timeLeft + 0.1) ai.blockers.push({ player: p, z: z2, jumpAt: null, jumped: false });
       }
     }
@@ -958,7 +992,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       const y = b.pos.y;
       const inOver = y >= p.H * 0.9 && y <= p.H * 1.25 && hd <= 0.6;
       const inBump = y >= 0.3 && y <= 1.35 && hd <= 0.8;
-      const inDive = y >= 0.05 && y <= 1.1 && hd <= 0.8 + 1.3;
+      const inDive = y >= 0.05 && y <= 1.1 && hd <= 0.8 + t.profile.diveReach;
       const nx = b.pos.x + b.vel.x * DT * 2, ny = b.pos.y + b.vel.y * DT * 2, nz = b.pos.z + b.vel.z * DT * 2;
       const nhd = Math.hypot(nx - p.pos.x, nz - p.pos.z);
       const timeOk = now >= pl.t - 0.04;
@@ -1138,18 +1172,19 @@ var VB = globalThis.VB || (globalThis.VB = {});
       const prevKind = lt && lt.team !== t ? lt.kind : null;
       const kind = prevKind === 'serve' ? 'reception' : prevKind === 'attack' ? 'dig' : 'pass';
       const skill = info.type === 'over' ? (p.s.passing + p.s.setting) / 2 : p.s.passing;
-      let err = (1.05 - skill) * (0.35 + info.vin / 30) * (1 + 0.5 * info.reach + (info.dive ? 0.8 : 0) + (info.type === 'over' && info.vin > 12 ? 0.6 : 0));
+      const prof = t.profile;
+      let err = prof.err.pass * (1.05 - skill) * (0.35 + info.vin / 30) * (1 + 0.5 * info.reach + (info.dive ? 0.8 : 0) + (info.type === 'over' && info.vin > 12 ? 0.6 : 0));
       if (b.float && info.type === 'over') err *= 1.2;
       const spot = t.toWorld(1.3, 0.8);
       const target = new V3(spot.x, 2.25, spot.z);
       const dist = b.pos.distXZ(target);
       let T = 0.95 + 0.07 * dist;
-      const pShank = clamp((err - 0.6) * 0.35 + Math.max(0, info.vin - 17) * 0.012, 0, 0.45);
+      const pShank = clamp(((err - 0.6) * 0.35 + Math.max(0, info.vin - 17) * 0.012) * prof.shank, 0, 0.55);
       if (rand() < pShank) {
         // Shanked: the ball flies off somewhere unplanned.
         const ang = rand() * Math.PI * 2;
-        const hs = randRange(1, 5) * (0.5 + info.vin / 20);
-        b.vel.set(Math.cos(ang) * hs, randRange(2, 7), Math.sin(ang) * hs);
+        const hs = randRange(1, 5) * (0.5 + info.vin / 20) * prof.shankFar;
+        b.vel.set(Math.cos(ang) * hs, randRange(2, 7) * Math.sqrt(prof.shankFar), Math.sin(ang) * hs);
         this.addLog(`${this.pn(p)} shanks the ${kind === 'dig' ? 'dig' : 'pass'}`, t, 'info');
       } else {
         const loc = t.toLocal(target.x, target.z);
@@ -1178,11 +1213,15 @@ var VB = globalThis.VB || (globalThis.VB = {});
         this.doAttack(p, 0.6, 'tip');
         return;
       }
+      // Chasing a ball far off the court: just bump it high back toward the middle.
+      const spot = t.toWorld(1.3, 0.8);
+      const farOff = Math.hypot(b.pos.x - spot.x, b.pos.z - spot.z) > 5 || Math.abs(b.pos.z) > C.HALF_W + 0.5 || Math.abs(b.pos.x) > C.HALF_L;
+      if (farOff) { this.doSave(p, info); return; }
       const choice = this.chooseHitter(t, p, quality);
       if (!choice) { this.doFree(p, info); return; }
       const { hitter, type, local } = choice;
       const hc = hitter.reach + hitter.jumpH * 0.95;
-      let err = (1.06 - p.s.setting) * (1 + info.reach * 0.8 + (info.type !== 'over' ? 1.0 : 0) + (info.dive ? 1.5 : 0) + Math.max(0, info.vin - 8) * 0.05);
+      let err = t.profile.err.set * (1.06 - p.s.setting) * (1 + info.reach * 0.8 + (info.type !== 'over' ? 1.0 : 0) + (info.dive ? 1.5 : 0) + Math.max(0, info.vin - 8) * 0.05);
       const loc = { d: local.d + gauss() * err * 0.45, l: local.l + gauss() * err * 0.7 };
       const w = t.toWorld(loc.d, loc.l);
       const target = new V3(w.x, hc - 0.1, w.z);
@@ -1199,8 +1238,25 @@ var VB = globalThis.VB || (globalThis.VB = {});
       t.ai.nextPlan = 0;
     }
 
+    // A high "save" pass back to the middle of the court from far away.
+    doSave(p, info) {
+      const t = p.team, b = this.ball;
+      const err = t.profile.err.set * (1.06 - (p.s.passing + p.s.setting) / 2) * (1 + info.reach + (info.dive ? 1.2 : 0));
+      const w = t.toWorld(2.8 + gauss() * err * 1.2, gauss() * err * 1.5);
+      const target = new V3(w.x, 2.4, w.z);
+      const T = clamp(1.2 + b.pos.distXZ(target) * 0.06, 1.2, 2.3);
+      b.vel.copy(PH.solveLaunch(b.pos, target, T, null));
+      b.spin.set(gauss() * 3, gauss() * 3, gauss() * 3);
+      b.float = null;
+      this.addLog(`${this.pn(p)} chases it down`, t, 'info');
+      this.registerContact(p, 'pass');
+      this.onBallEvent();
+    }
+
     chooseHitter(t, setter, quality) {
       const opp = this.other(t), now = this.time;
+      // Does the setter know who the good hitters are?
+      const know = t.profile.fixedRoles ? 1 : (t.knowledge + setter.raw.awareness) / 2;
       const sl = t.toLocal(setter.pos.x, setter.pos.z);
       let best = null;
       for (const p of t.players) {
@@ -1217,7 +1273,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
         const w = t.toWorld(local.d + 0.3 + 0.35, local.l);
         const dist = Math.hypot(w.x - p.pos.x, w.z - p.pos.z);
         const feasible = moveTime(dist, p) * (type === 'quick' ? 0.8 : 1) < T - p.tPeak + 0.15;
-        let sc = p.s.hitting * 2 + p.s.jumping * 0.5 + (feasible ? 0 : -3);
+        let sc = know * (p.s.hitting * 2 + p.s.jumping * 0.5) * (t.profile.fixedRoles ? 1 : 2.5) + (feasible ? 0 : -3);
         if (type === 'quick') sc += 0.25;
         if (type === 'medium') sc -= 0.3;
         // Avoid the side with more blockers.
@@ -1225,7 +1281,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
         let blk = 0;
         for (const o of opp.players) if (o.front && Math.abs(o.pos.z - lw.z) < 1.6) blk++;
         sc -= blk * 0.35 * setter.s.awareness;
-        sc += gauss() * (1.3 - setter.s.awareness) * 0.6;
+        sc += gauss() * ((1.3 - setter.s.awareness) * 0.6 + (1 - know) * 0.9);
         if (!best || sc > best.sc) best = { sc, hitter: p, type, local, feasible };
       }
       if (!best) return null;
@@ -1300,7 +1356,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
         T *= 1.12;
         v = PH.solveLaunch(c, target, T, spin);
       }
-      const err = (1.06 - hit) * (0.7 + (1 - q) * 1.3) * (cd.kind === 'tip' ? 0.6 : 1);
+      const err = t.profile.err.attack * (1.06 - hit) * (0.7 + (1 - q) * 1.3) * (cd.kind === 'tip' ? 0.6 : 1);
       v = perturb(v, gauss() * err * 0.12, gauss() * err * 0.08, 1 + gauss() * 0.05);
       b.vel.copy(v);
       b.spin.copy(spin);
@@ -1315,7 +1371,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
     doFree(p, info, fromAttack) {
       const t = p.team, opp = this.other(t), b = this.ball;
       const skill = (p.s.passing + p.s.setting) / 2;
-      const err = (1.08 - skill) * (1 + (info.reach || 0) + (info.dive ? 1.5 : 0) + (info.vin || 0) * 0.03);
+      const err = t.profile.err.set * (1.08 - skill) * (1 + (info.reach || 0) + (info.dive ? 1.5 : 0) + (info.vin || 0) * 0.03);
       const loc = { d: randRange(4.5, 7.5) + gauss() * err * 1.0, l: randRange(-3, 3) + gauss() * err * 1.2 };
       const w = opp.toWorld(loc.d, loc.l);
       const target = new V3(w.x, R, w.z);
@@ -1341,7 +1397,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       const t = p.team, opp = this.other(t), b = this.ball;
       const s = p.s.serving;
       const type = this.serve.type;
-      const spd = type === 'topspin' ? 17 + 9 * s : type === 'jumpfloat' ? 14.5 + 6 * s : 13 + 6.5 * s;
+      const spd = type === 'topspin' ? 17 + 9 * s : type === 'jumpfloat' ? 14.5 + 6 * s : type === 'underhand' ? 8.5 + 4 * s : 13 + 6.5 * s;
       const sdSrv = 0.4 + (1 - s) * 1.5;
       let best = null;
       for (let d = 2.5; d <= 8.6; d += 1) for (let l = -4; l <= 4; l += 1) {
@@ -1359,26 +1415,26 @@ var VB = globalThis.VB || (globalThis.VB = {});
       const spin = type === 'topspin' ? topspin(dir, 25 + 25 * s) : new V3(gauss() * 0.5, gauss() * 0.5, gauss() * 0.5);
       let T = dist / (spd * 0.78);
       let v = PH.solveLaunch(b.pos, target, T, spin);
-      const minClear = (type === 'topspin' ? 0.25 : 0.12) + (1 - s) * 0.35;
+      const minClear = (type === 'topspin' ? 0.25 : type === 'underhand' ? 0.6 : 0.12) + (1 - s) * 0.35;
       for (let k = 0; k < 12; k++) {
         if (PH.checkShot(b.pos, v, spin, minClear).ok) break;
         T *= 1.07;
         v = PH.solveLaunch(b.pos, target, T, spin);
       }
-      const err = 1.08 - s;
+      const err = t.profile.err.serve * (1.08 - s);
       v = perturb(v, gauss() * err * 0.05, gauss() * err * 0.05, 1 + gauss() * 0.03);
       b.vel.copy(v);
       b.spin.copy(spin);
       b.float = type === 'topspin' ? null : {
-        amp: (type === 'jumpfloat' ? 1.0 : 0.8) + 1.6 * s, t0: this.time,
+        amp: type === 'underhand' ? 0.3 : (type === 'jumpfloat' ? 1.0 : 0.8) + 1.6 * s, t0: this.time,
         w1: randRange(3, 6), w2: randRange(2, 5), p1: rand() * 6.28, p2: rand() * 6.28,
       };
-      p.setPose(type === 'float' ? 'serveHit' : 'spike', 0.35, this.time);
+      p.setPose(type === 'float' ? 'serveHit' : type === 'underhand' ? 'bump' : 'spike', 0.35, this.time);
       this.phase = 'rally';
       this.rallies++;
       this.netHitLogged = false;
       this.registerContact(p, 'serve');
-      const label = type === 'topspin' ? 'jump serve' : type === 'jumpfloat' ? 'jump float' : 'float serve';
+      const label = type === 'topspin' ? 'jump serve' : type === 'jumpfloat' ? 'jump float' : type === 'underhand' ? 'underhand serve' : 'float serve';
       this.addLog(`${this.pn(p)} ${label}`, t, 'serve');
       this.onBallEvent();
       // Receivers see the serve a touch late.
@@ -1419,7 +1475,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
           lastW.player.box.k++;
           desc = `Kill by ${this.pn(lastW.player)}${setAssist(lastW.player)}`;
           if (this.shotKind === 'tip') desc = `Tip kill by ${this.pn(lastW.player)}${setAssist(lastW.player)}`;
-        } else if (lastW && lastW.kind === 'serve') {
+        } else if (lastW && lastW.kind === 'serve' && this.contacts.filter((c) => c.team === loser).length <= 1) {
           const receivers = this.contacts.filter((c) => c.team === loser);
           lastW.player.box.sa++;
           if (receivers.length) { receivers[0].player.box.re++; desc = `Ace by ${this.pn(lastW.player)} — ${this.pn(receivers[0].player)} can't handle it`; }
@@ -1452,7 +1508,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
         } else if (lc && lastW && lastW.kind === 'attack') {
           lastW.player.box.k++;
           desc = `Kill by ${this.pn(lastW.player)}${setAssist(lastW.player)} — ${this.pn(lc.player)} can't control it`;
-        } else if (lc && lastW && lastW.kind === 'serve') {
+        } else if (lc && lastW && lastW.kind === 'serve' && this.contacts.filter((c) => c.team === loser).length <= 1) {
           lastW.player.box.sa++;
           lc.player.box.re++;
           desc = `Ace by ${this.pn(lastW.player)} — ${this.pn(lc.player)} shanks it`;
@@ -1475,6 +1531,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       // Side-out: winner rotates and serves.
       if (winner.idx !== this.serving) {
         winner.rotate();
+        this.pickSetter(winner);
         this.serving = winner.idx;
       }
       // Set / match end
@@ -1512,5 +1569,21 @@ var VB = globalThis.VB || (globalThis.VB = {});
   };
 
   VB.BLOCK_JUMP = 0.8;
+
+  // Mode profiles. `map` converts a 0..1 rating into engine ability (casual 10/10 ~ a mid-level competitive player).
+  VB.PROFILES = {
+    competitive: {
+      statMax: 100, heightUnit: 'cm', map: null, fixedRoles: true,
+      err: { pass: 1, set: 1, attack: 1, serve: 1 }, shank: 1, shankFar: 1, diveReach: 1.3,
+    },
+    casual: {
+      statMax: 10, heightUnit: 'in', fixedRoles: false,
+      map: {
+        jumping: [0.0, 0.55], reactions: [0.05, 0.55], agility: [0.08, 0.6], hitting: [0.0, 0.55],
+        passing: [0.02, 0.6], setting: [0.02, 0.6], blocking: [0.0, 0.5], serving: [0.05, 0.55], awareness: [0.0, 0.5],
+      },
+      err: { pass: 1.2, set: 1.3, attack: 1.3, serve: 1.5 }, shank: 1.4, shankFar: 1.5, diveReach: 0.9,
+    },
+  };
   Object.assign(VB, { Game, Player, Team, moveTime });
 })();

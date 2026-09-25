@@ -15,6 +15,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.4 var(--font); overflow: hidden; }
 button, select, input { font: inherit; color: inherit; }
 #app { position: fixed; inset: 0; }
@@ -118,6 +119,8 @@ table.box tr.tot td { font-weight: 700; border-top: 1px solid rgba(255,255,255,0
 .rot div { border: 1px solid var(--line); border-radius: 6px; padding: 4px; text-align: center; font-size: 12px; }
 .rot div b { display: block; font-size: 15px; }
 .rot div small { color: var(--muted); }
+.rot div.setter { border-color: var(--accent); }
+a { color: var(--accent); }
 .rot .net { grid-column: 1 / -1; border: 0; height: 3px; background: repeating-linear-gradient(90deg, #ddd 0 4px, transparent 4px 8px); padding: 0; }
 .roster { width: 100%; font-size: 12px; border-collapse: collapse; }
 .roster td { padding: 3px 4px; border-bottom: 1px solid var(--line); }
