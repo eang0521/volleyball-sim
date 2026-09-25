@@ -410,6 +410,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
     }
 
     callOverlaps() {
+      if (!this.profile.fixedRoles) return false; // casual games don't call overlap
       const faults = this.teams.map((t) => this.findOverlap(t));
       if (!faults[0] && !faults[1]) return false;
       if (faults[0] && faults[1]) {
@@ -482,7 +483,8 @@ var VB = globalThis.VB || (globalThis.VB = {});
       const miss = (1.05 - p.s.setting) ** 2;
       const low = ballY < p.H * 0.95;
       const diff = 1 + Math.max(0, info.vin - 6) * 0.1 + info.reach * 0.8 + (info.dive ? 1 : 0) + (low ? 0.4 : 0);
-      const pLift = 0.012 * miss * diff * (info.reach > 0.6 || low ? 2 : 1) * strict;
+      const casual = !p.team.profile.fixedRoles; // casual games don't call lifts
+      const pLift = casual ? 0 : 0.012 * miss * diff * (info.reach > 0.6 || low ? 2 : 1) * strict;
       const pDouble = touchNo === 1 ? 0 : 0.03 * miss * diff * strict; // doubles are legal on the first team contact
       const r = rand();
       if (r < pLift) return 'lift';

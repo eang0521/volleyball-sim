@@ -57,6 +57,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       // Settings
       const f = $('#settings-form');
       for (const el of $$('[data-casual]')) el.hidden = !casual();
+      if (casual()) $('[data-label-handling]').textContent = 'Double-contact calls (casual games don’t call lifts or overlap)';
       this.fillSettings();
       f.addEventListener('change', () => {
         const s = {};

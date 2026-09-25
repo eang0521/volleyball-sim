@@ -16,6 +16,7 @@ Open `casual.html` (or add `?mode=casual` to the URL) for a version tuned for a 
 - Hits are weaker, jumps lower and awareness lower. Passes shank more often and fly farther, so players sometimes have to run a long way to chase a ball down and bump it back into play. Weak servers serve underhand.
 - Positions are loose. Teams still rotate clockwise, but each rotation the team decides who sets, and players set to whoever they think should hit. A team's **awareness** decides how often it gets these right: an aware team puts its best setter in and feeds its best hitters, while an unaware one falls back on "whoever's in right front sets" or picks someone at random.
 - **Setter always plays from the front row** (a casual setting, on by default): each rotation the setter is one of the three front-row players, usually middle front or right front. Awareness still decides whether it's the best setter up there.
+- Casual games don't call **lifts** or **overlap**. Double contacts, four hits and the other rules still apply.
 - Casual mode keeps its own teams and settings, which default to best of 3 on a 2.35 m (co-ed) net.
 
 ## Controls
