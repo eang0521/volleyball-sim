@@ -2,9 +2,11 @@
 
 A 6-v-6 indoor volleyball simulation that plays itself. There are 12 players, and each has their own ratings. The ball follows simple physics, and a Three.js scene shows the match from a camera at the side of the court.
 
+**▶ Play it live: https://eang0521.github.io/volleyball-sim/**
+
 ## Running it
 
-Double-click `index.html`. Three.js loads from a CDN, so you need an internet connection. You can also serve the folder, e.g. `python -m http.server`, and open http://localhost:8000.
+Play the live version at the link above, or run it locally: double-click `index.html`. Three.js loads from a CDN, so you need an internet connection. You can also serve the folder, e.g. `python -m http.server`, and open http://localhost:8000.
 
 ## Controls
 
