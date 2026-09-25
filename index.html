@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Volleyball Sim</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <div id="stage"></div>
+
+  <header id="scoreboard" aria-live="polite">
+    <div class="sb-team" id="sb-a">
+      <span class="sb-swatch"></span>
+      <span class="sb-name"></span>
+      <span class="sb-serve" title="Serving">●</span>
+    </div>
+    <div class="sb-center">
+      <div class="sb-sets"><span id="sb-sets-a">0</span><span class="sb-label">SETS</span><span id="sb-sets-b">0</span></div>
+      <div class="sb-score"><span id="sb-score-a">0</span><span class="sb-dash">–</span><span id="sb-score-b">0</span></div>
+      <div class="sb-info" id="sb-info">Set 1</div>
+    </div>
+    <div class="sb-team right" id="sb-b">
+      <span class="sb-serve" title="Serving">●</span>
+      <span class="sb-name"></span>
+      <span class="sb-swatch"></span>
+    </div>
+  </header>
+
+  <div id="banner" hidden></div>
+
+  <nav id="controls">
+    <button id="btn-new" title="New match (N)">↺ New</button>
+    <button id="btn-play" title="Play / pause (Space)" class="primary">❚❚ Pause</button>
+    <button id="btn-step" title="Step one frame while paused (.)">Step ▸</button>
+    <div class="seg" id="speed-seg" role="group" aria-label="Speed">
+      <button data-speed="0.25">¼×</button>
+      <button data-speed="0.5">½×</button>
+      <button data-speed="1" class="on">1×</button>
+      <button data-speed="2">2×</button>
+      <button data-speed="4">4×</button>
+      <button data-speed="8">8×</button>
+    </div>
+    <label class="sel">Camera
+      <select id="cam-select">
+        <option value="broadcast">Side (broadcast)</option>
+        <option value="follow">Side (follow ball)</option>
+        <option value="baseline">Baseline</option>
+        <option value="orbit">Free orbit</option>
+      </select>
+    </label>
+    <button id="btn-panel" title="Toggle side panel (P)">☰ Panel</button>
+  </nav>
+
+  <aside id="panel">
+    <div class="tabs" role="tablist">
+      <button role="tab" data-tab="log" class="on">Play-by-play</button>
+      <button role="tab" data-tab="box">Box score</button>
+      <button role="tab" data-tab="teams">Teams</button>
+      <button role="tab" data-tab="settings">Settings</button>
+    </div>
+    <section class="tab-body" id="tab-log"><ol id="log"></ol></section>
+    <section class="tab-body" id="tab-box" hidden><div id="boxscore"></div></section>
+    <section class="tab-body" id="tab-teams" hidden>
+      <div class="row gap">
+        <button id="btn-edit-teams" class="primary">Edit teams & stats…</button>
+      </div>
+      <div class="row gap">
+        <label class="sel">Random level
+          <select id="rand-level"></select>
+        </label>
+        <button id="btn-random-teams">🎲 Random teams</button>
+      </div>
+      <div id="team-summaries"></div>
+    </section>
+    <section class="tab-body" id="tab-settings" hidden>
+      <form id="settings-form" onsubmit="return false">
+        <label>Points to win a set <input type="number" name="pointsPerSet" min="1" max="99"></label>
+        <label>Points to win the deciding set <input type="number" name="finalSetPoints" min="1" max="99"></label>
+        <label>Match length
+          <select name="bestOf">
+            <option value="1">1 set</option>
+            <option value="3">Best of 3</option>
+            <option value="5">Best of 5</option>
+            <option value="7">Best of 7</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" name="winBy2"> Must win by 2</label>
+        <label>Point cap (0 = none) <input type="number" name="pointCap" min="0" max="99"></label>
+        <label>Net height
+          <select name="netHeight">
+            <option value="2.43">Men's — 2.43 m</option>
+            <option value="2.35">Co-ed — 2.35 m</option>
+            <option value="2.24">Women's — 2.24 m</option>
+            <option value="2.13">Youth — 2.13 m</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" name="switchSides"> Switch sides between sets</label>
+        <label>Pause between rallies (s) <input type="number" name="pointDelay" min="0.5" max="6" step="0.1"></label>
+        <label class="check"><input type="checkbox" name="showMarkers"> Show AI markers (landing spot, who's playing the ball)</label>
+        <p class="hint">Scoring and match-length changes take effect immediately; use <b>New</b> to restart the match.</p>
+      </form>
+    </section>
+  </aside>
+
+  <dialog id="editor">
+    <form method="dialog" id="editor-form">
+      <header class="ed-head">
+        <h2>Teams & player ratings</h2>
+        <p class="hint">Rows are the starting rotation: P1 serves first, P2 (right front) usually sets, P4 (left front) usually hits. Any player can play any role. Ratings are 1–99.</p>
+      </header>
+      <div id="editor-teams"></div>
+      <footer class="ed-foot">
+        <button value="cancel" formnovalidate>Cancel</button>
+        <button id="ed-apply" value="apply" class="primary">Apply & start new match</button>
+      </footer>
+    </form>
+  </dialog>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script src="js/util.js"></script>
+<script src="js/physics.js"></script>
+<script src="js/teams.js"></script>
+<script src="js/game.js"></script>
+<script src="js/render.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
