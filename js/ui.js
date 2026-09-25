@@ -56,6 +56,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
 
       // Settings
       const f = $('#settings-form');
+      for (const el of $$('[data-casual]')) el.hidden = !casual();
       this.fillSettings();
       f.addEventListener('change', () => {
         const s = {};

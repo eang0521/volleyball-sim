@@ -34,8 +34,10 @@
       Object.assign(this.settings, s);
       store.set('vb.settings', this.settings);
       if (this.game) {
+        const prevFront = this.game.settings.frontRowSetter;
         Object.assign(this.game.settings, s);
         VB.C.netTop = this.settings.netHeight;
+        if (prevFront !== this.game.settings.frontRowSetter) for (const t of this.game.teams) this.game.pickSetter(t);
       }
     },
     togglePause() { this.paused = !this.paused; this.ui.syncControls(); },

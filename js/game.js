@@ -208,8 +208,22 @@ var VB = globalThis.VB || (globalThis.VB = {});
     pickSetter(t) {
       if (t.profile.fixedRoles) { t.fixedSetter = null; return; }
       const score = (p) => p.raw.setting * 1.5 + p.raw.awareness * 0.4;
-      const best = t.players.reduce((a, p) => (score(p) > score(a) ? p : a));
       const r = rand();
+      if (this.settings.frontRowSetter) {
+        // Setter always comes from the front row, usually middle front or right front.
+        const front = [t.at(2), t.at(3), t.at(4)];
+        const habit = [0.5, 0.35, 0.15]; // RF, MF, LF
+        if (r < t.knowledge) {
+          // Aware teams pick the best setter up front (with a slight lean away from left front).
+          t.fixedSetter = front.reduce((a, p, i) => (score(p) - (i === 2 ? 0.1 : 0) > score(a) - (front.indexOf(a) === 2 ? 0.1 : 0) ? p : a));
+        } else {
+          let x = rand(), i = 0;
+          while (i < 2 && x > habit[i]) x -= habit[i++];
+          t.fixedSetter = front[i];
+        }
+        return;
+      }
+      const best = t.players.reduce((a, p) => (score(p) > score(a) ? p : a));
       if (r < t.knowledge) t.fixedSetter = best;
       else if (r < t.knowledge + (1 - t.knowledge) * 0.6) t.fixedSetter = t.at(2); // habit: right front sets
       else t.fixedSetter = t.players[Math.floor(rand() * 6)];
@@ -231,6 +245,12 @@ var VB = globalThis.VB || (globalThis.VB = {});
       const spots = serving
         ? { 1: null, 2: [1.3, 2.6], 3: [1.3, 0], 4: [1.3, -2.6], 5: [6.2, -2.6], 6: [7.2, 0] }
         : { 1: [6.8, 2.4], 2: [1.1, 2.0], 3: [4.2, 0.3], 4: [4.6, -2.8], 5: [6.8, -2.4], 6: [7.6, 0] };
+      // Casual front-row setter waits at the net on serve receive; right front passes instead if not setting.
+      const sz = t.fixedSetter ? t.fixedSetter.zone : 0;
+      if (!serving && sz >= 3 && sz <= 4) {
+        spots[2] = [4.4, 2.6];
+        spots[sz] = [1.1, sz === 3 ? 0.6 : -1.8];
+      }
       for (let z = 1; z <= 6; z++) {
         const p = t.at(z);
         const sp = spots[z];
@@ -1563,6 +1583,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
     pointCap: 0,
     netHeight: 2.43,
     switchSides: true,
+    frontRowSetter: true,
     pointDelay: 2.4,
     serveDelay: 1.6,
     setBreak: 4,
