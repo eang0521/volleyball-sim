@@ -468,7 +468,11 @@ var VB = globalThis.VB || (globalThis.VB = {});
     bodyTouch(p) {
       const t = p.team, lt = this.lastTouch;
       if (lt && lt.kind === 'serve' && lt.team === t) return this.fault(lt, 'fault', `serve hits teammate ${this.pn(p)}`);
-      if (lt && lt.player === p && lt.kind !== 'block' && this.profile.fixedRoles) return this.pointTo(this.other(t), 'handling', p, `Double contact — ball hits ${this.pn(p)} again`);
+      // Same player touching it twice in a row. Casual games (no ref) only call it when it's obvious —
+      // two clearly separate touches, not one messy contact.
+      if (lt && lt.player === p && lt.kind !== 'block' && (this.profile.fixedRoles || this.time - lt.time >= 0.4)) {
+        return this.pointTo(this.other(t), 'handling', p, `${this.pn(p)} touches it twice in a row`);
+      }
       const touchesAfter = (lt && lt.team === t ? this.touches[t.idx] : 0) + 1;
       if (touchesAfter > 3) return this.pointTo(this.other(t), 'handling', p, `Four hits — ball touches ${this.pn(p)}`);
       this.addLog(`Ball deflects off ${this.pn(p)}`, t, 'info');
