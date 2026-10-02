@@ -829,6 +829,8 @@ var VB = globalThis.VB || (globalThis.VB = {});
         } else if (purpose === 'set') {
           sc += s.setting * 1.2;
           if (p === t.setter()) sc += 1.6;
+          const so = ai.setterOut;
+          if (so && so.backup === p && now >= so.callAt) sc += 2.0; // answered the "setter out" call
         } else sc += (s.passing + s.setting) * 0.5;
         opt.score = sc;
         opt.player = p;
@@ -849,7 +851,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       const overLo = H * 0.98, overHi = H * 1.18, overT = H * 1.06;
       const bumpLo = 0.4, bumpHi = 1.25, bumpT = 0.85;
       const react = Math.max(0, p.reactAt - now);
-      let best = null;
+      let best = null, chase = null;
       const i0 = Math.max(0, Math.ceil((now + 0.05 - path.t0) / DT));
       for (let i = i0; i < path.n; i += 2) {
         const x = path.x[i];
@@ -875,7 +877,14 @@ var VB = globalThis.VB || (globalThis.VB = {});
         if (slack < 0 || type === 'low') {
           if (type === 'over') continue;
           const needDive = moveTime(Math.max(0, dist - t.profile.diveReach), p) + 0.1;
-          if (tAvail - needDive < 0) continue;
+          if (tAvail - needDive < 0) {
+            // Can't quite make it — but remember the closest miss so somebody still chases the ball.
+            const deficit = needDive - tAvail;
+            if (tAvail > 0 && deficit < 0.7 && (!chase || deficit < chase.deficit)) {
+              chase = { i, t: tt, type: 'dive', dive: true, chase: true, stand: { x: sx, z: sz }, score: -6 - deficit * 3, y, deficit };
+            }
+            continue;
+          }
           dive = true;
           slack = tAvail - needDive;
         }
@@ -896,7 +905,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
           best = { i, t: tt, type: dive ? 'dive' : type, dive, stand: { x: sx, z: sz }, score: sc, y };
         }
       }
-      return best;
+      return best || chase;
     }
 
     // Plan the hitter's approach and jump for the ball currently set.
@@ -1009,9 +1018,15 @@ var VB = globalThis.VB || (globalThis.VB = {});
           this.assignSpots(t, free, spots.map(([d, l]) => [clamp(d, 1, 8.5), clamp(l, -4.2, 4.2)]), go);
         } else {
           const setterPlan = ai.plan && ai.plan.purpose === 'set' ? ai.plan : null;
+          const so = ai.setterOut;
           for (const p of free) {
             const z = p.zone;
-            if (p === t.setter() && !t.profile.fixedRoles) { go(p, 1.3, 0.8); continue; }
+            // Backup setter heads to where the dig is going once the call is made.
+            if (so && so.backup === p && now >= so.callAt) {
+              p.target = { x: so.aim.x + t.sgn * 0.3, z: so.aim.z }; p.arriveT = null;
+              continue;
+            }
+            if (p === t.setter() && !t.profile.fixedRoles && !so) { go(p, 1.3, 0.8); continue; }
             if (z === 4) go(p, 3.6, -3.9);
             else if (z === 3) {
               const quickReady = setterPlan && setterPlan.t - now < 0.45 && setterPlan.type === 'over';
@@ -1308,6 +1323,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
         this.touches[t.idx] = 0;
         t.ai.blockers = t.ai.blockers.filter((b) => b.player.air);
         t.ai.blockRead = false;
+        t.ai.setterOut = null;
         opp.ai.setInfo = null; opp.ai.hit = null; opp.ai.plan = null;
       }
       if (kind === 'block') this.touches[t.idx] = 0;
@@ -1321,6 +1337,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       this.contacts.push(this.lastTouch);
       t.ai.plan = null;
       if (kind === 'attack' || kind === 'free' || kind === 'serve') { t.ai.setInfo = null; t.ai.hit = null; }
+      if (kind !== 'reception' && kind !== 'dig' && kind !== 'pass') t.ai.setterOut = null;
       // Opponents get a reaction delay after any contact on the other side.
       const readF = kind === 'attack' ? 0.6 : 1;
       for (const q of opp.players) q.reactAt = this.time + q.reactT * readF;
@@ -1337,10 +1354,13 @@ var VB = globalThis.VB || (globalThis.VB = {});
       const prof = t.profile;
       let err = prof.err.pass * (1.05 - skill) * (0.35 + info.vin / 30) * (1 + 0.5 * info.reach + (info.dive ? 0.8 : 0) + (info.type === 'over' && info.vin > 12 ? 0.6 : 0));
       if (b.float && info.type === 'over') err *= 1.2;
-      const spot = t.toWorld(1.3, 0.8);
-      const target = new V3(spot.x, 2.25, spot.z);
+      // If the setter takes the first ball, an aware setter digs it high to the middle for a backup to set.
+      const setterOut = p === t.setter() && kind !== 'pass';
+      const outAim = setterOut && rand() < 0.35 + 0.65 * p.s.awareness / (prof.fixedRoles ? 1 : 0.5);
+      const spot = outAim ? t.toWorld(2.6, 0.3) : t.toWorld(1.3, 0.8);
+      const target = new V3(spot.x, outAim ? 2.0 : 2.25, spot.z);
       const dist = b.pos.distXZ(target);
-      let T = 0.95 + 0.07 * dist;
+      let T = 0.95 + 0.07 * dist + (outAim ? 0.25 : 0);
       const pShank = clamp(((err - 0.6) * 0.35 + Math.max(0, info.vin - 17) * 0.012) * prof.shank, 0, 0.55);
       if (rand() < pShank) {
         // Shanked: the ball flies off somewhere unplanned.
@@ -1363,7 +1383,42 @@ var VB = globalThis.VB || (globalThis.VB = {});
       this.registerContact(p, kind);
       if (kind === 'dig') this.pendingDig = { team: t, box: p.box };
       this.onBallEvent();
+      if (setterOut) this.callSetterOut(t, p);
     }
+
+    // "Setter out!" — the setter took the first ball, so someone else has to set.
+    // Team awareness decides how fast the call comes, whether the right person answers, or whether anyone does.
+    setterOutCall(t, setter) {
+      const now = this.time, k = t.knowledge;
+      const path = this.path;
+      // Where the dig is heading (setting height on the way down, else the landing point).
+      let aim = null;
+      if (path) for (let i = path.n - 1; i >= 0; i--) if (path.y[i] >= 2.0 && path.x[i] * t.sgn > 0.2) { aim = { x: path.x[i], z: path.z[i] }; break; }
+      if (!aim) aim = t.toWorld(2.6, 0.3);
+      const cands = t.players.filter((p) => p !== setter && now >= p.downUntil - 0.1);
+      if (!cands.length) return;
+      const dist = (p) => Math.hypot(p.pos.x - aim.x, p.pos.z - aim.z);
+      if (rand() < (1 - k) * 0.25) {
+        // Nobody calls it: everyone hesitates a moment before somebody goes for the ball.
+        const wait = 0.25 + (1 - k) * 0.35;
+        for (const q of cands) q.reactAt = Math.max(q.reactAt, now + wait);
+        t.ai.setterOut = { backup: null, callAt: now + wait };
+        this.addLog(`Setter ${this.pn(setter)} took the first ball — nobody calls "setter out"`, t, 'info');
+        return;
+      }
+      let backup;
+      if (rand() < k) {
+        // Knows who should step in: best remaining setter who can get there.
+        backup = cands.reduce((a, p) => ((p.raw.setting + p.raw.awareness * 0.2 - dist(p) / 8) > (a.raw.setting + a.raw.awareness * 0.2 - dist(a) / 8) ? p : a));
+      } else {
+        backup = cands.reduce((a, p) => (dist(p) < dist(a) ? p : a)); // whoever is closest
+      }
+      const callAt = now + 0.12 + (1 - k) * 0.5 + Math.abs(gauss()) * 0.08;
+      t.ai.setterOut = { backup, callAt, aim };
+      backup.reactAt = Math.min(backup.reactAt, callAt);
+      this.addLog(`"Setter out!" — ${this.pn(backup)} steps in to set`, t, 'info');
+    }
+    callSetterOut(t, setter) { this.setterOutCall(t, setter); t.ai.nextPlan = 0; }
 
     // ---- second contact: set
     doSet(p, info) {
