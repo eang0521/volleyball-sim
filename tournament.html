@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Volleyball Sim — Tournament</title>
+<link rel="stylesheet" href="css/tournament.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>Tournament</h1>
+    <p class="sub">Casual players, full rules. <a href="./casual.html">Casual sim</a> · <a href="./">Competitive sim</a></p>
+  </div>
+  <nav class="steps" role="tablist" aria-label="Tournament steps">
+    <button role="tab" data-tab="players"><span class="n">1</span>Players</button>
+    <button role="tab" data-tab="teams"><span class="n">2</span>Teams</button>
+    <button role="tab" data-tab="format"><span class="n">3</span>Format</button>
+    <button role="tab" data-tab="play"><span class="n">4</span>Tournament</button>
+  </nav>
+</header>
+
+<main>
+  <!-- 1. Players -->
+  <section class="tab" id="tab-players" hidden>
+    <div class="card">
+      <h2>Load players</h2>
+      <p class="hint">Paste an <b>open-gym-teams</b> backup, or one player per line: <code>name, stars, position, gender</code> (for example <code>Jamie, 4, hitter, F</code>). Positions: All-around, Hitter, Middle, Libero, Setter.</p>
+      <textarea id="pasteBox" rows="5" spellcheck="false" aria-label="Players to load" placeholder='{"app":"open-gym-teams","v":1,"players":[...]}'></textarea>
+      <div class="row">
+        <button class="primary" id="btnLoad">Load players</button>
+        <span id="loadMsg" class="msg" role="status"></span>
+      </div>
+    </div>
+    <div class="card" id="playersCard" hidden>
+      <div class="row between">
+        <h2>Who's playing <span id="presentCount" class="count"></span></h2>
+        <div class="row">
+          <input type="search" id="playerSearch" placeholder="Search names" aria-label="Search players">
+          <button id="btnAll">All</button><button id="btnNone">None</button>
+        </div>
+      </div>
+      <p class="hint">Everyone is 5′8″. Stars set every rating (1★ = 1/10 … 5★ = 9/10). Position moves points between ratings, so players with the same stars always have the same total.</p>
+      <div class="tbl-wrap"><table class="plist" id="playerTable"></table></div>
+      <details class="stats-key">
+        <summary>How stars and positions become ratings</summary>
+        <div id="statsKey" class="tbl-wrap"></div>
+      </details>
+    </div>
+  </section>
+
+  <!-- 2. Teams -->
+  <section class="tab" id="tab-teams" hidden>
+    <div class="card">
+      <div class="row between wrap">
+        <div class="row">
+          <span class="lbl" id="kLbl">Teams</span>
+          <div class="stepper" role="group" aria-labelledby="kLbl">
+            <button id="kDec" aria-label="Fewer teams">−</button><output id="kOut" aria-live="polite">2</output><button id="kInc" aria-label="More teams">+</button>
+          </div>
+          <span id="kSizes" class="hint"></span>
+        </div>
+        <div class="row">
+          <button class="primary" id="btnMake">Make teams</button>
+        </div>
+      </div>
+      <p class="hint">Balanced like <b>open-gym-teams</b>: average stars first, then setters/hitters, genders, and strong/newer players spread out. Each team's lineup is then ordered so every rotation has a setter option, hitters and passers. Teams of 7+ sub in at the serve.</p>
+      <p id="teamsMsg" class="msg" role="status"></p>
+    </div>
+    <div id="teamGrid" class="team-grid"></div>
+  </section>
+
+  <!-- 3. Format -->
+  <section class="tab" id="tab-format" hidden>
+    <form id="fmtForm" onsubmit="return false">
+      <div class="card">
+        <h2>Format</h2>
+        <div class="formats" role="radiogroup" aria-label="Tournament format">
+          <label class="fmt"><input type="radio" name="format" value="pool-playoff"><b>Pool play → playoffs</b><span>Round-robin pools, then the top teams play a bracket.</span></label>
+          <label class="fmt"><input type="radio" name="format" value="single"><b>Single elimination</b><span>Lose once and you're out.</span></label>
+          <label class="fmt"><input type="radio" name="format" value="double"><b>Double elimination</b><span>Winners and losers brackets; out after two losses.</span></label>
+          <label class="fmt"><input type="radio" name="format" value="roundrobin"><b>Round robin</b><span>Everyone plays everyone; best record wins.</span></label>
+        </div>
+        <div class="grid">
+          <label>Seeding
+            <select name="seeding"><option value="strength">By team strength</option><option value="random">Random</option></select>
+          </label>
+        </div>
+      </div>
+
+      <div class="card" data-show="pool-playoff roundrobin">
+        <h2>Pool play</h2>
+        <div class="grid">
+          <label data-show="pool-playoff">Number of pools <input type="number" name="pools" min="1" max="8"></label>
+          <label>Games per team <select name="poolGames"></select></label>
+          <label class="check"><input type="checkbox" name="poolDouble"> Play each opponent twice</label>
+        </div>
+      </div>
+
+      <div class="card" data-show="pool-playoff">
+        <h2>Playoffs</h2>
+        <div class="grid">
+          <label>Who advances
+            <select name="advanceMode"><option value="perPool">Top teams from each pool</option><option value="overall">Top teams overall</option></select>
+          </label>
+          <label><span id="advLbl">Teams per pool</span> <input type="number" name="advanceCount" min="1" max="24"></label>
+          <label>Bracket
+            <select name="playoffType"><option value="single">Single elimination</option><option value="double">Double elimination</option></select>
+          </label>
+        </div>
+      </div>
+
+      <div class="card" data-show="single double pool-playoff">
+        <h2>Bracket options</h2>
+        <div class="grid">
+          <label class="check" data-bracket="single"><input type="checkbox" name="thirdPlace"> Third-place match</label>
+          <label class="check" data-bracket="double"><input type="checkbox" name="gfReset"> Grand final reset (the losers-bracket team must win twice)</label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Match length</h2>
+        <div class="mgrid" id="matchGrid"></div>
+      </div>
+
+      <div class="card">
+        <h2>Rules</h2>
+        <div class="grid">
+          <label>Net height
+            <select name="netHeight">
+              <option value="2.43">Men's — 2.43 m</option><option value="2.35">Co-ed — 2.35 m</option>
+              <option value="2.24">Women's — 2.24 m</option><option value="2.13">Youth — 2.13 m</option>
+            </select>
+          </label>
+          <label>Ball-handling calls
+            <select name="handlingCalls"><option value="0">Off</option><option value="0.5">Lenient</option><option value="1">Normal</option><option value="1.8">Strict</option></select>
+          </label>
+          <label class="check"><input type="checkbox" name="frontRowSetter"> Setter always plays from the front row</label>
+          <label class="check"><input type="checkbox" name="switchSides"> Switch sides between sets</label>
+        </div>
+        <p class="hint">A referee enforces every rule: overlap, lifts and double contacts, four hits, back-row attacks, net and centre-line faults.</p>
+      </div>
+      <div class="card summary" id="fmtSummary" role="status"></div>
+    </form>
+  </section>
+
+  <!-- 4. Tournament -->
+  <section class="tab" id="tab-play" hidden>
+    <div class="card" id="startCard">
+      <h2>Ready?</h2>
+      <p id="startSummary" class="hint"></p>
+      <button class="primary big" id="btnStart">Start tournament</button>
+    </div>
+    <div id="liveArea" hidden>
+      <div class="card toolbar">
+        <div class="row wrap">
+          <button class="primary" id="btnSimNext">Sim next match</button>
+          <button id="btnSimAvail">Sim all ready matches</button>
+          <button id="btnSimAll">Sim whole tournament</button>
+          <span id="simStatus" class="msg" role="status"></span>
+        </div>
+        <button class="danger" id="btnReset">Reset tournament</button>
+      </div>
+      <div id="champion" class="champion" hidden></div>
+      <div id="poolsArea"></div>
+      <div id="bracketArea"></div>
+      <div class="card" id="leadersCard" hidden>
+        <h2>Leaders</h2>
+        <div id="leaders" class="leaders"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- Live match viewer -->
+<div id="viewer" class="viewer" hidden role="dialog" aria-modal="true" aria-label="Live match">
+  <div id="vStage" class="vstage"></div>
+  <header class="vscore" aria-live="polite">
+    <div class="vteam"><span class="sw" id="vSwA"></span><span id="vNameA"></span><span class="srv" id="vSrvA">●</span></div>
+    <div class="vmid"><div class="vsets"><span id="vSetsA">0</span><small>SETS</small><span id="vSetsB">0</span></div><div class="vpts"><span id="vPtsA">0</span>–<span id="vPtsB">0</span></div><div id="vInfo" class="vinfo"></div></div>
+    <div class="vteam r"><span class="srv" id="vSrvB">●</span><span id="vNameB"></span><span class="sw" id="vSwB"></span></div>
+  </header>
+  <div id="vBanner" class="vbanner" hidden></div>
+  <aside class="vlog"><ol id="vLog"></ol></aside>
+  <nav class="vctl">
+    <button id="vPlay" class="primary">❚❚ Pause</button>
+    <div class="seg" id="vSpeed"><button data-s="0.5">½×</button><button data-s="1" class="on">1×</button><button data-s="2">2×</button><button data-s="4">4×</button><button data-s="8">8×</button></div>
+    <select id="vCam" aria-label="Camera"><option value="broadcast">Side</option><option value="follow">Follow ball</option><option value="baseline">Baseline</option><option value="orbit">Free orbit</option></select>
+    <button id="vFinish">Sim to end</button>
+    <button id="vClose">Close</button>
+  </nav>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script src="js/util.js"></script>
+<script src="js/physics.js"></script>
+<script src="js/teams.js"></script>
+<script src="js/game.js"></script>
+<script src="js/render.js"></script>
+<script src="js/tourney.js"></script>
+<script src="js/tourney-ui.js"></script>
+</body>
+</html>

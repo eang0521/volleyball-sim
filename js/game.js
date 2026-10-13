@@ -15,7 +15,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       this.data = data;
       this.team = team;
       this.idx = idx;
-      this.id = team.idx * 6 + idx;
+      this.id = team.idx * 100 + idx;
       this.name = data.name;
       this.number = data.number;
       this.skin = data.skin || '#e0ac85';
@@ -71,20 +71,31 @@ var VB = globalThis.VB || (globalThis.VB = {});
       this.profile = profile;
       this.name = data.name;
       this.color = data.color;
-      this.players = data.players.map((pd, i) => new Player(pd, this, i));
+      // Full roster; 6 are on court (`order`, by zone) and any extras wait on the bench.
+      this.roster = data.players.map((pd, i) => new Player(pd, this, i));
       // How well the team knows who should set and hit (casual mode); 1 = always knows.
-      const aw = this.players.reduce((a, p) => a + p.raw.awareness, 0) / 6;
+      const aw = this.roster.reduce((a, p) => a + p.raw.awareness, 0) / this.roster.length;
       this.knowledge = profile.fixedRoles ? 1 : clamp(0.1 + 0.9 * aw, 0, 1);
       this.fixedSetter = null;
-      this.order = this.players.slice();
+      this.resetRotation();
       this.sgn = idx === 0 ? -1 : 1;
       this.score = 0;
       this.sets = 0;
       this.setScores = [];
       this.ai = {};
     }
+    get players() { return this.order; } // players on court
+    resetRotation() { this.order = this.roster.slice(0, 6); this.bench = this.roster.slice(6); }
     at(zone) { return this.order[zone - 1]; }
-    rotate() { this.order.push(this.order.shift()); }
+    // Clockwise rotation. With extra players, the next bench player comes in at zone 1 to serve
+    // and the player who would have rotated from zone 2 to serve goes to the bench.
+    rotate() {
+      const o = this.order;
+      if (!this.bench.length) { o.push(o.shift()); return; }
+      const sub = this.bench.shift();
+      this.bench.push(o[1]);
+      this.order = [sub, o[2], o[3], o[4], o[5], o[0]];
+    }
     toWorld(d, l) { return { x: this.sgn * d, z: -this.sgn * l }; }
     toLocal(x, z) { return { d: x * this.sgn, l: -z * this.sgn }; }
     get fwdX() { return -this.sgn; }
@@ -127,7 +138,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
 
     other(t) { return this.teams[1 - t.idx]; }
     teamOnSide(x) { return this.teams.find((t) => Math.sign(x) === t.sgn) || this.teams[0]; }
-    get allPlayers() { return this.teams[0].players.concat(this.teams[1].players); }
+    get allPlayers() { return this.teams[0].roster.concat(this.teams[1].roster); }
 
     addLog(text, team = null, kind = '') {
       this.log.push({ text, team: team ? team.idx : null, kind, score: [this.teams[0].score, this.teams[1].score], set: this.setNo });
@@ -140,7 +151,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       C.netTop = this.settings.netHeight;
       for (const t of this.teams) {
         t.sets = 0; t.setScores = [];
-        for (const p of t.players) p.box = newBox();
+        for (const p of t.roster) p.box = newBox();
       }
       this.teams[0].sgn = -1; this.teams[1].sgn = 1;
       this.setNo = 1;
@@ -153,13 +164,13 @@ var VB = globalThis.VB || (globalThis.VB = {});
     }
 
     get setsToWin() { return Math.ceil(this.settings.bestOf / 2); }
-    get isDecidingSet() { return this.teams[0].sets === this.setsToWin - 1 && this.teams[1].sets === this.setsToWin - 1 && this.settings.bestOf > 1; }
+    get isDecidingSet() { return !this.settings.playAllSets && this.teams[0].sets === this.setsToWin - 1 && this.teams[1].sets === this.setsToWin - 1 && this.settings.bestOf > 1; }
     get setTarget() { return this.isDecidingSet ? this.settings.finalSetPoints : this.settings.pointsPerSet; }
 
     startSet() {
       for (const t of this.teams) {
         t.score = 0;
-        t.order = t.players.slice();
+        t.resetRotation();
         this.pickSetter(t);
       }
       if (this.settings.switchSides && this.setNo > 1) {
@@ -208,6 +219,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
             p.pos.x = p.target.x; p.pos.z = p.target.z;
             p.facing = t.fwdX > 0 ? Math.PI / 2 : -Math.PI / 2;
           }
+          t.bench.forEach((p, i) => { const b = this.benchSpot(t, i); p.pos.set(b.x, 0, b.z); p.vel.set(0, 0, 0); p.facing = 0; });
         }
       }
       this.updateHeldBall();
@@ -410,7 +422,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
     }
 
     callOverlaps() {
-      if (!this.profile.fixedRoles) return false; // casual games don't call overlap
+      if (!this.profile.ref) return false; // casual games (no ref) don't call overlap
       const faults = this.teams.map((t) => this.findOverlap(t));
       if (!faults[0] && !faults[1]) return false;
       if (faults[0] && faults[1]) {
@@ -470,7 +482,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       if (lt && lt.kind === 'serve' && lt.team === t) return this.fault(lt, 'fault', `serve hits teammate ${this.pn(p)}`);
       // Same player touching it twice in a row. Casual games (no ref) only call it when it's obvious —
       // two clearly separate touches, not one messy contact.
-      if (lt && lt.player === p && lt.kind !== 'block' && (this.profile.fixedRoles || this.time - lt.time >= 0.4)) {
+      if (lt && lt.player === p && lt.kind !== 'block' && (this.profile.ref || this.time - lt.time >= 0.4)) {
         return this.pointTo(this.other(t), 'handling', p, `${this.pn(p)} touches it twice in a row`);
       }
       const touchesAfter = (lt && lt.team === t ? this.touches[t.idx] : 0) + 1;
@@ -483,11 +495,11 @@ var VB = globalThis.VB || (globalThis.VB = {});
     // Referee's call on an overhead contact: lift (carry) or double contact.
     handlingFault(p, info, touchNo, ballY) {
       const strict = this.settings.handlingCalls;
-      if (!strict || !this.profile.fixedRoles) return null; // casual: no ref, no handling calls
+      if (!strict || !this.profile.ref) return null; // casual: no ref, no handling calls
       const miss = (1.05 - p.s.setting) ** 2;
       const low = ballY < p.H * 0.95;
       const diff = 1 + Math.max(0, info.vin - 6) * 0.1 + info.reach * 0.8 + (info.dive ? 1 : 0) + (low ? 0.4 : 0);
-      const casual = !p.team.profile.fixedRoles; // casual games don't call lifts
+      const casual = !p.team.profile.ref; // casual games don't call lifts
       const pLift = casual ? 0 : 0.012 * miss * diff * (info.reach > 0.6 || low ? 2 : 1) * strict;
       const pDouble = touchNo === 1 ? 0 : 0.03 * miss * diff * strict; // doubles are legal on the first team contact
       const r = rand();
@@ -643,6 +655,12 @@ var VB = globalThis.VB || (globalThis.VB = {});
     moveAll() {
       const now = this.time;
       for (const t of this.teams) for (const p of t.players) this.movePlayer(p, now);
+      // Bench players wait along the far sideline.
+      for (const t of this.teams) t.bench.forEach((p, i) => {
+        p.target = this.benchSpot(t, i); p.arriveT = null; p.air = false; p.pos.y = 0;
+        p.look = { x: this.ball.pos.x, z: this.ball.pos.z };
+        this.movePlayer(p, now);
+      });
       // Separation between players of the same team.
       for (const t of this.teams) {
         const ps = t.players;
@@ -723,7 +741,10 @@ var VB = globalThis.VB || (globalThis.VB = {});
       if (p.pos.x * t.sgn < 0.15) p.pos.x = t.sgn * 0.15;
     }
 
+    benchSpot(t, i) { return { x: t.sgn * (4.2 + i * 0.75), z: -5.8 }; }
+
     animatePose(p) {
+      if (p.team.bench.includes(p)) { p.pose = 'idle'; return; }
       if (this.time > p.poseUntil && !p.air) {
         const live = this.phase === 'rally' || this.phase === 'serve';
         if (this.time < p.downUntil && p.pose === 'dive') return;
@@ -1765,10 +1786,14 @@ var VB = globalThis.VB || (globalThis.VB = {});
         winner.sets++;
         this.teams[0].setScores.push(this.teams[0].score);
         this.teams[1].setScores.push(this.teams[1].score);
-        if (winner.sets >= this.setsToWin) {
-          this.winner = winner;
+        const played = this.teams[0].setScores.length;
+        if (this.settings.playAllSets ? played >= this.settings.bestOf : winner.sets >= this.setsToWin) {
+          // Play-all-sets matches (pool play) can end tied on sets.
+          const [a, b] = this.teams;
+          this.winner = a.sets === b.sets ? null : a.sets > b.sets ? a : b;
           this.pendingSetEnd = 'match';
-          this.addLog(`${winner.name} win the match ${winner.sets}–${loser.sets}!`, winner, 'header');
+          if (this.winner) this.addLog(`${this.winner.name} win the match ${this.winner.sets}–${this.other(this.winner).sets}!`, this.winner, 'header');
+          else this.addLog(`Match tied ${a.sets}–${b.sets} on sets`, null, 'header');
         } else {
           this.pendingSetEnd = 'set';
           this.addLog(`${winner.name} take set ${this.setNo} ${s}–${o}`, winner, 'header');
@@ -1797,11 +1822,11 @@ var VB = globalThis.VB || (globalThis.VB = {});
   // Mode profiles. `map` converts a 0..1 rating into engine ability (casual 10/10 ~ a mid-level competitive player).
   VB.PROFILES = {
     competitive: {
-      statMax: 100, heightUnit: 'cm', map: null, fixedRoles: true,
+      statMax: 100, heightUnit: 'cm', map: null, fixedRoles: true, ref: true,
       err: { pass: 1, set: 1, attack: 1, serve: 1 }, shank: 1, shankFar: 1, diveReach: 1.3,
     },
     casual: {
-      statMax: 10, heightUnit: 'in', fixedRoles: false,
+      statMax: 10, heightUnit: 'in', fixedRoles: false, ref: false,
       map: {
         jumping: [0.0, 0.55], reactions: [0.05, 0.55], agility: [0.08, 0.6], hitting: [0.0, 0.55],
         passing: [0.02, 0.6], setting: [0.02, 0.6], blocking: [0.0, 0.5], serving: [0.05, 0.55], awareness: [0.0, 0.5],
@@ -1809,5 +1834,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       err: { pass: 1.2, set: 1.3, attack: 1.3, serve: 1.5 }, shank: 1.4, shankFar: 1.5, diveReach: 0.9,
     },
   };
+  // Tournament: casual players and play, but a referee enforces every rule.
+  VB.PROFILES.tournament = Object.assign({}, VB.PROFILES.casual, { ref: true });
   Object.assign(VB, { Game, Player, Team, moveTime });
 })();

@@ -22,6 +22,33 @@ Open `casual.html` (or add `?mode=casual` to the URL) for a version tuned for a 
 - **⚖️ Balance rotations** (in the editor) tries every possible order and picks the one whose weakest rotation is strongest. Every front row gets a setter option and hitters or blockers, and every back row gets passers. Random casual teams are balanced this way too.
 - Casual mode keeps its own teams and settings, which default to best of 3 on a 2.35 m (co-ed) net.
 
+## Tournament
+
+Open `tournament.html` (live: https://eang0521.github.io/volleyball-sim/tournament.html) to run a whole tournament from an open-gym player list. It plays like casual mode, but a referee enforces every rule.
+
+1. **Players**: paste an **open-gym-teams** backup (JSON) or one player per line (`name, stars, position, gender`), then uncheck anyone who isn't playing. Stars and positions can be edited here too.
+   - Stars set every rating: 1★ = 1/10, 2★ = 3, 3★ = 5, 4★ = 7, 5★ = 9.
+   - Position (All-around, Hitter, Middle, Libero or Setter) shifts points between ratings. The shifts sum to zero, so every player with the same stars has the same total.
+   - Everyone is 5′8″ with the same skin tone.
+2. **Teams**: teams are split with the same engine as **vball-teams**.
+   - It balances average stars first, then spreads setters and hitters, genders, and strong and newer players, and it honors together/apart rules from the backup.
+   - Pick the number of teams. Every team has at least 6 players.
+   - Each lineup is ordered so every rotation is playable. Teams with 7 or more players sub in at the serve: each rotation, the next bench player comes in at zone 1 to serve and the player rotating out of zone 2 sits.
+   - You can move players between teams.
+3. **Format**:
+   - **Single elimination**, with an optional third-place match.
+   - **Double elimination**, with an optional grand-final reset.
+   - **Round robin**.
+   - **Pool play → playoffs**: number of pools, games per team or a full round robin, an option to play each opponent twice, the top N per pool or overall advance, and a single- or double-elimination playoff.
+   - Seeding is by team strength or random.
+   - Pool games, playoff matches and finals each get their own match length: best of 1, 3 or 5, or a fixed number of sets with ties allowed, plus points per set, deciding-set points, win by 2 and a point cap.
+   - Rules: net height, ball-handling strictness, front-row setter, switching sides.
+4. **Tournament**:
+   - Standings, a bracket that updates as results come in, and stat leaders.
+   - **Watch** any match in 3D, or **Sim** it.
+   - **Sim whole tournament** runs matches in parallel background workers; a 10-team pool-and-playoff tournament takes about 10 seconds.
+   - Progress is saved in the browser.
+
 ## Controls
 
 | Key | Action |
@@ -54,4 +81,4 @@ Teams and settings are saved in the browser's local storage.
 
 ## Tuning tools
 
-`node tools/headless.js [matches] [level|casual]` runs whole matches without rendering. It prints outcome rates (kills, aces, errors, blocks, digs) so you can check realism after changing the model. `node tools/diag.js` prints the contact sequence of each rally.
+`node tools/tourney-test.js [backup.json]` checks the tournament logic (stats, team split, every bracket format). `node tools/headless.js [matches] [level|casual]` runs whole matches without rendering. It prints outcome rates (kills, aces, errors, blocks, digs) so you can check realism after changing the model. `node tools/diag.js` prints the contact sequence of each rally.
