@@ -37,6 +37,31 @@ var VB = globalThis.VB || (globalThis.VB = {});
     return c;
   }
 
+  // Name tag drawn on a canvas: dark pill, white text, team-colour underline.
+  function nameTag(text, color) {
+    const fontPx = 40, pad = 18;
+    const meas = document.createElement('canvas').getContext('2d');
+    meas.font = `600 ${fontPx}px system-ui, sans-serif`;
+    const w = Math.ceil(meas.measureText(text).width) + pad * 2, h = 64;
+    const tex = canvasTex(w, h, (g) => {
+      g.fillStyle = 'rgba(10,16,28,0.78)';
+      const r = 14;
+      g.beginPath();
+      g.moveTo(r, 0); g.arcTo(w, 0, w, h, r); g.arcTo(w, h, 0, h, r); g.arcTo(0, h, 0, 0, r); g.arcTo(0, 0, w, 0, r);
+      g.fill();
+      g.fillStyle = color; g.fillRect(pad, h - 9, w - pad * 2, 5);
+      g.fillStyle = '#ffffff';
+      g.font = `600 ${fontPx}px system-ui, sans-serif`;
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(text, w / 2, h / 2 - 3);
+    });
+    const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false, depthWrite: false, transparent: true, sizeAttenuation: false });
+    const sp = new THREE.Sprite(mat);
+    sp.renderOrder = 10;
+    sp.userData.aspect = w / h;
+    return sp;
+  }
+
   function jerseyTex(num, color, big) {
     return canvasTex(128, 128, (g, w, h) => {
       g.fillStyle = color; g.fillRect(0, 0, w, h);
@@ -102,10 +127,15 @@ var VB = globalThis.VB || (globalThis.VB = {});
       this.ring.rotation.x = -Math.PI / 2;
       this.ring.visible = false;
       scene.add(this.ring);
+      // Name above the head (shown when enabled).
+      this.label = nameTag(p.display || p.name, new THREE.Color(p.team.color).getStyle());
+      this.label.position.y = H + 0.35;
+      this.label.visible = false;
+      g.add(this.label);
       scene.add(g);
     }
 
-    update(dt, game, showRing) {
+    update(dt, game, showRing, showName) {
       const p = this.p;
       this.group.position.set(p.pos.x, p.pos.y, p.pos.z);
       this.group.rotation.y = p.facing;
@@ -127,12 +157,16 @@ var VB = globalThis.VB || (globalThis.VB = {});
       this.pivot.rotation.x = c.tilt;
       this.pivot.position.z = c.tilt * 0.25;
       this.ring.visible = showRing;
+      this.label.visible = !!showName;
+      if (showName) { const hgt = 0.027; this.label.scale.set(hgt * this.label.userData.aspect, hgt, 1); }
       if (showRing) this.ring.position.set(p.pos.x, 0.015, p.pos.z);
     }
 
     dispose(scene) {
       scene.remove(this.group);
       scene.remove(this.ring);
+      this.label.material.map.dispose();
+      this.label.material.dispose();
       this.group.traverse((o) => {
         if (o.isMesh) {
           o.geometry.dispose();
@@ -374,7 +408,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
         if (t.ai.plan) planned.add(t.ai.plan.player);
         if (t.ai.hit) planned.add(t.ai.hit.player);
       }
-      for (const v of this.playerViews) v.update(dt * Math.max(opts.speed, 0.25), game, planned.has(v.p));
+      for (const v of this.playerViews) v.update(dt * Math.max(opts.speed, 0.25), game, planned.has(v.p), opts.showNames);
       const land = game.phase === 'rally' && game.path && game.path.land;
       this.marker.visible = !!(opts.showMarkers && land);
       if (land) this.marker.position.set(land.x, 0.012, land.z);

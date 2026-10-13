@@ -502,7 +502,7 @@
         let n = 0;
         while (this.acc >= DT && n < 4000) { g.update(DT); this.acc -= DT; n++; }
       }
-      this.renderer.render(this.paused ? 0 : real, { speed: this.speed, showMarkers: false });
+      this.renderer.render(this.paused ? 0 : real, { speed: this.speed, showMarkers: false, showNames: $('#vNames').checked });
       this.hud();
       if (g.phase === 'over' && !this.recorded) this.record();
       this.raf = requestAnimationFrame((t) => this.frame(t));

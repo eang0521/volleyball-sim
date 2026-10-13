@@ -12,7 +12,7 @@
   }
 
   const app = {
-    settings: Object.assign({}, VB.DEFAULT_SETTINGS, CASUAL ? { bestOf: 3, netHeight: 2.35 } : {}, { showMarkers: false }, store.get('vb.settings', {})),
+    settings: Object.assign({}, VB.DEFAULT_SETTINGS, CASUAL ? { bestOf: 3, netHeight: 2.35 } : {}, { showMarkers: false, showNames: false }, store.get('vb.settings', {})),
     teamsData: null,
     paused: false,
     speed: 1,
@@ -74,7 +74,7 @@
       app.pendingStep = false;
       for (let i = 0; i < 4; i++) { app.game.update(DT); simDt += DT; }
     }
-    app.renderer.render(app.paused ? simDt : real, { speed: app.paused ? 1 : app.speed, showMarkers: app.settings.showMarkers });
+    app.renderer.render(app.paused ? simDt : real, { speed: app.paused ? 1 : app.speed, showMarkers: app.settings.showMarkers, showNames: app.settings.showNames });
     app.ui.update();
     requestAnimationFrame(frame);
   }
