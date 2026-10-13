@@ -197,6 +197,24 @@ var VB = globalThis.VB || (globalThis.VB = {});
     return teams;
   };
 
+  // "First L." names; if two players would match, add letters of the last name until they don't.
+  let snCache = { key: '', map: {} };
+  T.shortNames = function (players) {
+    const key = players.map((p) => p.id + ':' + p.name).join('|');
+    if (snCache.key === key) return snCache.map;
+    const parts = players.map((p) => { const w = p.name.trim().split(/\s+/); return { id: p.id, first: w[0], last: w.length > 1 ? w.slice(1).join(' ') : '' }; });
+    const map = {};
+    const fmt = (x, n) => (x.last ? `${x.first} ${x.last.slice(0, n)}${n < x.last.length ? '.' : ''}` : x.first);
+    for (const x of parts) {
+      let n = 1;
+      const clash = (k) => parts.some((y) => y !== x && fmt(y, k) === fmt(x, k));
+      while (x.last && n < x.last.length && clash(n)) n++;
+      map[x.id] = fmt(x, n);
+    }
+    snCache = { key, map };
+    return map;
+  };
+
   T.teamStrength = (ps) => (ps.length ? ps.reduce((a, p) => a + (+p.skill || 3), 0) / ps.length : 0);
 
   // ------------------------------------------------------------ lineups (any roster size)
@@ -583,7 +601,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       name: t.name, color: t.color,
       players: t.playerIds.map((pid, i) => {
         const p = tour.playerMap[pid];
-        return { id: pid, name: p.name, number: t.numbers ? t.numbers[pid] : i + 1, height: T.HEIGHT_IN, skin: T.SKIN, stats: T.starStats(p.skill, p.pos) };
+        return { id: pid, name: p.name, display: T.shortNames(Object.values(tour.playerMap))[pid], number: t.numbers ? t.numbers[pid] : i + 1, height: T.HEIGHT_IN, skin: T.SKIN, stats: T.starStats(p.skill, p.pos) };
       }),
     };
   };

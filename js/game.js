@@ -17,6 +17,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       this.idx = idx;
       this.id = team.idx * 100 + idx;
       this.name = data.name;
+      this.display = data.display || null; // optional short name for the log (e.g. "Elijah A.")
       this.number = data.number;
       this.skin = data.skin || '#e0ac85';
       const prof = team.profile;
@@ -1683,7 +1684,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
     }
 
     // ---------------------------------------------------------- scoring
-    pn(p) { return p ? `#${p.number} ${p.name.split(' ').slice(-1)[0]}` : ''; }
+    pn(p) { return p ? `#${p.number} ${p.display || p.name.split(' ').slice(-1)[0]}` : ''; }
 
     fault(lt, reason, text, where) {
       if (!lt) return this.pointTo(this.teams[1 - this.serving], reason, null, text);

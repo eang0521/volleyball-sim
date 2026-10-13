@@ -37,7 +37,7 @@
   const teamOf = (pid) => S.teams.find((t) => t.playerIds.includes(pid));
   const tById = (id) => (S.tour ? S.tour.teams : S.teams).find((t) => t.id === id);
   const stars = (n) => `<span class="stars" aria-label="${n} of 5 stars">${'★'.repeat(n)}<span class="off">${'★'.repeat(5 - n)}</span></span>`;
-  const first = (n) => n.split(' ')[0];
+  const sn = (id) => T.shortNames(S.players)[id] || (pmap[id] ? pmap[id].name : '?'); // "Elijah A."
 
   // ------------------------------------------------------------ tabs
   function showTab(tab) {
@@ -160,11 +160,11 @@
     if (locked) { $('#teamsMsg').className = 'msg'; $('#teamsMsg').textContent = 'The tournament has started — reset it on the Tournament tab to change teams.'; }
     $('#teamGrid').innerHTML = S.teams.map((t) => {
       const ps = t.playerIds.map((id) => pmap[id]);
-      const rot = T.cycleRotations(ps).map((r, i) => `R${i + 1} ${r.front.map((p) => first(p.name)).join('/')}`).join(' · ');
+      const rot = T.cycleRotations(ps).map((r, i) => `R${i + 1} ${r.front.map((p) => esc(sn(p.id))).join('/')}`).join(' · ');
       const moveOpts = (pid) => `<select data-move="${pid}" aria-label="Move ${esc(pmap[pid].name)} to another team" ${locked ? 'disabled' : ''}><option value="">Move…</option>${S.teams.filter((x) => x !== t).map((x) => `<option value="${x.id}">→ ${esc(x.name)}</option>`).join('')}</select>`;
       return `<article class="tcard" style="--tc:${t.color}">
         <header><b>${esc(t.name)}</b><span>${ps.length} players · ${T.teamStrength(ps).toFixed(2)}★ avg</span></header>
-        <ol>${ps.map((p, i) => `<li><span class="i">${i < 6 ? 'P' + (i + 1) : 'Sub'}</span><span>${esc(p.name)}</span><span class="pos" title="${T.POSN[p.pos] || 'All-around'}">${p.pos || '–'} ${stars(p.skill)}</span>${moveOpts(p.id)}</li>`).join('')}</ol>
+        <ol>${ps.map((p, i) => `<li><span class="i">${i < 6 ? 'P' + (i + 1) : 'Sub'}</span><span title="${esc(p.name)}">${esc(sn(p.id))}</span><span class="pos" title="${T.POSN[p.pos] || 'All-around'}">${p.pos || '–'} ${stars(p.skill)}</span>${moveOpts(p.id)}</li>`).join('')}</ol>
         <div class="rots">${ps.length < 6 ? '<span class="warn">Needs at least 6 players.</span> ' : ''}Front row each rotation: ${rot}</div>
       </article>`;
     }).join('');
@@ -329,7 +329,7 @@
     if (tour.stage === 'done' && tour.champion) {
       const t = tById(tour.champion);
       ch.hidden = false;
-      ch.innerHTML = `🏆 <b>${esc(t.name)}</b> win the tournament! <span class="hint">${t.playerIds.map((id) => esc(pmap[id].name)).join(', ')}</span>`;
+      ch.innerHTML = `🏆 <b>${esc(t.name)}</b> win the tournament! <span class="hint">${t.playerIds.map((id) => esc(sn(id))).join(', ')}</span>`;
     } else ch.hidden = true;
     // Pools
     const poolMs = tour.matches.filter((m) => m.stage === 'pool');
@@ -395,7 +395,7 @@
     const tm = (pid) => S.tour.teams.find((t) => t.playerIds.includes(pid));
     const cat = (key, label) => {
       const top = ids.filter((id) => tot[id][key] > 0).sort((a, b) => tot[b][key] - tot[a][key]).slice(0, 8);
-      return `<div><h3>${label}</h3><ol>${top.map((id) => `<li><span class="dot" style="background:${tm(id) ? tm(id).color : '#888'}"></span>${esc(pmap[id] ? pmap[id].name : '?')} — <b>${+tot[id][key].toFixed(1)}</b></li>`).join('') || '<li class="hint">—</li>'}</ol></div>`;
+      return `<div><h3>${label}</h3><ol>${top.map((id) => `<li><span class="dot" style="background:${tm(id) ? tm(id).color : '#888'}"></span>${esc(sn(id))} — <b>${+tot[id][key].toFixed(1)}</b></li>`).join('') || '<li class="hint">—</li>'}</ol></div>`;
     };
     $('#leaders').innerHTML = cat('pts', 'Points') + cat('k', 'Kills') + cat('sa', 'Aces') + cat('blk', 'Blocks') + cat('dig', 'Digs') + cat('a', 'Assists');
   }
