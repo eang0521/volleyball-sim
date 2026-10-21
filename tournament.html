@@ -25,7 +25,7 @@
   <section class="tab" id="tab-players" hidden>
     <div class="card">
       <h2>Load players</h2>
-      <p class="hint">Paste an <b>open-gym-teams</b> backup, or one player per line: <code>name, stars, position, gender</code> (for example <code>Jamie, 4, hitter, F</code>). Positions: All-around, Hitter, Middle, Libero, Setter.</p>
+      <p class="hint">Paste an <b>open-gym-teams</b> backup, or one player per line: <code>name, rating, position, gender</code> with a 1–10 rating (for example <code>Jamie, 7, hitter, F</code>). Positions: All-around, Hitter, Middle, Libero, Setter.</p>
       <textarea id="pasteBox" rows="5" spellcheck="false" aria-label="Players to load" placeholder='{"app":"open-gym-teams","v":1,"players":[...]}'></textarea>
       <div class="row">
         <button class="primary" id="btnLoad">Load players</button>
@@ -40,10 +40,10 @@
           <button id="btnAll">All</button><button id="btnNone">None</button>
         </div>
       </div>
-      <p class="hint">Everyone is 5′8″. Stars set every rating (1★ = 1/10 … 5★ = 9/10). Position moves points between ratings, so players with the same stars always have the same total.</p>
+      <p class="hint">Everyone is 5′8″. A player's 1–10 rating is the base for every skill; position moves points between skills, so players with the same rating always have the same total.</p>
       <div class="tbl-wrap"><table class="plist" id="playerTable"></table></div>
       <details class="stats-key">
-        <summary>How stars and positions become ratings</summary>
+        <summary>How ratings and positions become skills</summary>
         <div id="statsKey" class="tbl-wrap"></div>
       </details>
     </div>
@@ -64,7 +64,7 @@
           <button class="primary" id="btnMake">Make teams</button>
         </div>
       </div>
-      <p class="hint">Balanced like <b>open-gym-teams</b>: average stars first, then setters/hitters, genders, and strong/newer players spread out. Each team's lineup is then ordered so every rotation has a setter option, hitters and passers. Teams of 7+ sub in at the serve.</p>
+      <p class="hint">Balanced like <b>open-gym-teams</b>: average rating first, then setters/hitters, genders, and strong/newer players spread out. Each team's lineup is then ordered so every rotation has a setter option, hitters and passers. Teams of 7+ sub in at the serve.</p>
       <p id="teamsMsg" class="msg" role="status"></p>
     </div>
     <div id="teamGrid" class="team-grid"></div>

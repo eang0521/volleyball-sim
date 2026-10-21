@@ -27,11 +27,11 @@ Open `casual.html` (or add `?mode=casual` to the URL) for a version tuned for a 
 Open `tournament.html` (live: https://eang0521.github.io/volleyball-sim/tournament.html) to run a whole tournament from an open-gym player list. It plays like casual mode, but a referee enforces every rule.
 
 1. **Players**: paste an **open-gym-teams** backup (JSON) or one player per line (`name, stars, position, gender`), then uncheck anyone who isn't playing. Stars and positions can be edited here too.
-   - Stars set every rating: 1★ = 1/10, 2★ = 3, 3★ = 5, 4★ = 7, 5★ = 9.
-   - Position (All-around, Hitter, Middle, Libero or Setter) shifts points between ratings. The shifts sum to zero, so every player with the same stars has the same total.
+   - Ratings are 1–10, the same as open-gym-teams. A player's rating is the base for every skill. Older backups on 1–5 stars convert as 2 × stars − 1.
+   - Position (All-around, Hitter, Middle, Libero or Setter) shifts points between skills. The shifts sum to zero, so every player with the same rating has the same total.
    - Everyone is 5′8″ with the same skin tone.
 2. **Teams**: teams are split with the same engine as **vball-teams**.
-   - It balances average stars first, then spreads setters and hitters, genders, and strong and newer players, and it honors together/apart rules from the backup.
+   - It balances average rating first, then spreads setters and hitters, genders, and strong and newer players, and it honors together/apart rules from the backup.
    - Pick the number of teams. Every team has at least 6 players.
    - Each lineup is ordered so every rotation is playable. Teams with 7 or more players sub in at the serve: each rotation, the next bench player comes in at zone 1 to serve and the player rotating out of zone 2 sits.
    - You can move players between teams.

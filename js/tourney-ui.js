@@ -17,6 +17,7 @@
     tab: 'players', players: [], pairs: [], present: [], k: 0, teams: [], config: clone(T.DEFAULT_CONFIG), tour: null,
   }, store.get() || {});
   S.config = mergeConfig(S.config);
+  if (S.scale !== 10) { for (const p of S.players) p.skill = T.fromStars(p.skill); S.scale = 10; }
   function mergeConfig(c) {
     const d = clone(T.DEFAULT_CONFIG);
     c = c || {};
@@ -36,7 +37,8 @@
   const maxTeams = () => Math.max(2, Math.floor(present().length / 6));
   const teamOf = (pid) => S.teams.find((t) => t.playerIds.includes(pid));
   const tById = (id) => (S.tour ? S.tour.teams : S.teams).find((t) => t.id === id);
-  const stars = (n) => `<span class="stars" aria-label="${n} of 5 stars">${'★'.repeat(n)}<span class="off">${'★'.repeat(5 - n)}</span></span>`;
+  // Rating badge, coloured like open-gym-teams: 1-3 gray, 4-6 blue, 7-8 green, 9-10 gold.
+  const badge = (n) => `<span class="rb ${n >= 9 ? 'r4' : n >= 7 ? 'r3' : n >= 4 ? 'r2' : 'r1'}" title="${n} · ${T.LEVELS[n] || ''}">${n}</span>`;
   const sn = (id) => T.shortNames(S.players)[id] || (pmap[id] ? pmap[id].name : '?'); // "Elijah A."
 
   // ------------------------------------------------------------ tabs
@@ -61,11 +63,11 @@
     const msg = $('#loadMsg');
     if (res.error || !res.players.length) { msg.textContent = res.error || 'No players found.'; msg.className = 'msg err'; return; }
     if (S.tour && !confirm('Loading new players resets the current tournament and teams. Continue?')) return;
-    S.players = res.players; S.pairs = res.pairs; S.present = res.players.map((p) => p.id);
+    S.players = res.players; S.pairs = res.pairs; S.present = res.players.map((p) => p.id); S.scale = 10;
     S.teams = []; S.tour = null; S.k = 0;
     rebuildMap(); save();
     msg.className = 'msg';
-    msg.textContent = `Loaded ${res.players.length} players${res.pairs.length ? ` and ${res.pairs.length} together/apart rules` : ''}. Uncheck anyone who isn't playing, then go to Teams.`;
+    msg.textContent = `Loaded ${res.players.length} player${res.players.length === 1 ? "" : "s"}${res.pairs.length ? ` and ${res.pairs.length} together/apart rules` : ''}.${res.converted ? ' This backup used 1–5 stars, so ratings were converted to 1–10 (2 × stars − 1).' : ''} Uncheck anyone who isn't playing, then go to Teams.`;
     $('#pasteBox').value = '';
     renderPlayers();
   };
@@ -91,7 +93,7 @@
       return `<tr class="${on ? '' : 'out'}" data-id="${p.id}">
         <td><input type="checkbox" data-f="present" ${on ? 'checked' : ''} ${locked ? 'disabled' : ''} aria-label="${esc(p.name)} is playing"></td>
         <td>${esc(p.name)}</td>
-        <td><select data-f="skill" ${locked ? 'disabled' : ''} aria-label="Stars for ${esc(p.name)}">${[1, 2, 3, 4, 5].map((s) => `<option value="${s}"${s === p.skill ? ' selected' : ''}>${'★'.repeat(s)}</option>`).join('')}</select></td>
+        <td><select data-f="skill" ${locked ? 'disabled' : ''} aria-label="Rating for ${esc(p.name)}">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((s) => `<option value="${s}"${s === p.skill ? ' selected' : ''}>${s} · ${T.LEVELS[s]}</option>`).join('')}</select></td>
         <td><select data-f="pos" ${locked ? 'disabled' : ''} aria-label="Position for ${esc(p.name)}">${posOpts(p.pos)}</select></td>
         <td><select data-f="gender" ${locked ? 'disabled' : ''} aria-label="Gender for ${esc(p.name)}"><option value=""${!p.gender ? ' selected' : ''}>—</option><option value="M"${p.gender === 'M' ? ' selected' : ''}>M</option><option value="F"${p.gender === 'F' ? ' selected' : ''}>F</option></select></td>
         <td class="t">${S.tour || S.teams.length ? (teamOf(p.id) ? `<span class="dot" style="background:${teamOf(p.id).color}"></span>${esc(teamOf(p.id).name)}` : '') : ''}</td>
@@ -111,10 +113,10 @@
   function renderStatsKey() {
     const keys = VB.STAT_KEYS;
     const rows = [['A', 'All-around'], ['H', 'Hitter'], ['M', 'Middle'], ['L', 'Libero'], ['S', 'Setter']].map(([k, l]) => {
-      const v = T.starStats(3, k), off = T.OFFSETS[k];
+      const v = T.ratingStats(5, k), off = T.OFFSETS[k];
       return `<tr><td>${l}</td>${keys.map((s) => `<td class="${(off[s] || 0) > 0 ? 'up' : (off[s] || 0) < 0 ? 'dn' : ''}">${v[s]}</td>`).join('')}<td>${keys.reduce((a, s) => a + v[s], 0)}</td></tr>`;
     }).join('');
-    $('#statsKey').innerHTML = `<p class="hint">Ratings for a 3★ player (base 5/10) by position. 1★ = 1, 2★ = 3, 4★ = 7, 5★ = 9, with the same position shifts. A blank position plays as All-around.</p>
+    $('#statsKey').innerHTML = `<p class="hint">Skills for a player rated 5 by position. A player's 1–10 rating is the base for every skill, and position moves points between them (shown for a 5; other ratings get the same shifts). A blank position plays as All-around.</p>
       <table class="key"><thead><tr><th>Position</th>${keys.map((k) => `<th title="${k}">${VB.STAT_LABELS[k]}</th>`).join('')}<th>Total</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
 
@@ -128,7 +130,7 @@
   $('#kInc').onclick = () => { S.k = Math.min(maxTeams(), (S.k || maxTeams()) + 1); save(); renderTeams(); };
   $('#btnMake').onclick = () => makeTeams();
 
-  function playerForLineup(id) { const p = pmap[id]; return Object.assign({}, p, { height: T.HEIGHT_IN, stats: T.starStats(p.skill, p.pos) }); }
+  function playerForLineup(id) { const p = pmap[id]; return Object.assign({}, p, { height: T.HEIGHT_IN, stats: T.ratingStats(p.skill, p.pos) }); }
   function relineup(team) {
     team.playerIds = T.bestLineup(team.playerIds.map(playerForLineup)).map((p) => p.id);
     team.numbers = team.numbers || {};
@@ -163,8 +165,8 @@
       const rot = T.cycleRotations(ps).map((r, i) => `R${i + 1} ${r.front.map((p) => esc(sn(p.id))).join('/')}`).join(' · ');
       const moveOpts = (pid) => `<select data-move="${pid}" aria-label="Move ${esc(pmap[pid].name)} to another team" ${locked ? 'disabled' : ''}><option value="">Move…</option>${S.teams.filter((x) => x !== t).map((x) => `<option value="${x.id}">→ ${esc(x.name)}</option>`).join('')}</select>`;
       return `<article class="tcard" style="--tc:${t.color}">
-        <header><b>${esc(t.name)}</b><span>${ps.length} players · ${T.teamStrength(ps).toFixed(2)}★ avg</span></header>
-        <ol>${ps.map((p, i) => `<li><span class="i">${i < 6 ? 'P' + (i + 1) : 'Sub'}</span><span title="${esc(p.name)}">${esc(sn(p.id))}</span><span class="pos" title="${T.POSN[p.pos] || 'All-around'}">${p.pos || '–'} ${stars(p.skill)}</span>${moveOpts(p.id)}</li>`).join('')}</ol>
+        <header><b>${esc(t.name)}</b><span>${ps.length} players · ${T.teamStrength(ps).toFixed(2)} avg rating</span></header>
+        <ol>${ps.map((p, i) => `<li><span class="i">${i < 6 ? 'P' + (i + 1) : 'Sub'}</span><span title="${esc(p.name)}">${esc(sn(p.id))}</span><span class="pos" title="${T.POSN[p.pos] || 'All-around'}">${p.pos || '–'} ${badge(p.skill)}</span>${moveOpts(p.id)}</li>`).join('')}</ol>
         <div class="rots">${ps.length < 6 ? '<span class="warn">Needs at least 6 players.</span> ' : ''}Front row each rotation: ${rot}</div>
       </article>`;
     }).join('');

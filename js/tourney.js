@@ -1,4 +1,4 @@
-// Tournament logic: player ratings from stars/position, team division (ported from vball-teams),
+// Tournament logic: player ratings from a 1-10 rating and position, team division (ported from vball-teams),
 // lineups, schedules/brackets, standings and results. No DOM, so it can be tested in Node.
 var VB = globalThis.VB || (globalThis.VB = {});
 
@@ -12,8 +12,12 @@ var VB = globalThis.VB || (globalThis.VB = {});
   T.POSN = Object.fromEntries(T.POS);
   T.HEIGHT_IN = 68; // everyone is 5'8"
   T.SKIN = '#c68a5e';
-  const BASE = [1, 3, 5, 7, 9];
-  // Position shifts: each sums to zero so every player with the same stars has the same total.
+  // Ratings are 1-10 like open-gym-teams (old 1-5 star sets convert as 2x - 1).
+  T.DEFAULT_RATING = 5;
+  T.LEVELS = ['', 'Beginner-', 'Beginner', 'Beginner+', 'Intermediate-', 'Intermediate', 'Intermediate+', 'Advanced', 'Advanced+', 'Expert', 'Expert+'];
+  T.clampRating = (v) => Math.min(10, Math.max(1, Math.round(+v) || T.DEFAULT_RATING));
+  T.fromStars = (v) => Math.min(10, Math.max(1, 2 * Math.min(5, Math.max(1, Math.round(+v) || 3)) - 1));
+  // Position shifts: each sums to zero so every player with the same rating has the same total.
   T.OFFSETS = {
     A: { setting: 2, blocking: -1, jumping: -1 },
     H: { jumping: 2, hitting: 2, blocking: 1, passing: -2, setting: -2, awareness: -1 },
@@ -22,11 +26,12 @@ var VB = globalThis.VB || (globalThis.VB = {});
     S: { setting: 3, awareness: 2, passing: 1, hitting: -2, blocking: -2, jumping: -1, serving: -1 },
   };
 
-  // 0-10 ratings for a star level and position. Clamping at 0/10 is rebalanced so totals stay equal.
-  T.starStats = function (stars, pos) {
-    const s = Math.min(5, Math.max(1, Math.round(+stars || 3)));
+  // 0-10 skills from a 1-10 rating (the base for every skill) and position.
+  // Clamping at 0/10 is rebalanced so totals stay equal.
+  T.ratingStats = function (rating, pos) {
+    const base = T.clampRating(rating);
     const off = T.OFFSETS[pos] || T.OFFSETS.A;
-    const keys = VB.STAT_KEYS, base = BASE[s - 1], target = base * keys.length;
+    const keys = VB.STAT_KEYS, target = base * keys.length;
     const v = {};
     for (const k of keys) v[k] = Math.min(10, Math.max(0, base + (off[k] || 0)));
     let diff = target - keys.reduce((a, k) => a + v[k], 0);
@@ -42,14 +47,15 @@ var VB = globalThis.VB || (globalThis.VB = {});
     return v;
   };
 
-  // Accepts an open-gym-teams backup (JSON) or lines like "Jamie, 4, setter, F" (tabs/commas/semicolons).
+  // Accepts an open-gym-teams backup (JSON) or lines like "Jamie, 7, setter, F" (tabs/commas/semicolons).
+  // Backups marked scale:10 are 1-10; older ones are 1-5 stars and convert as 2x - 1.
   T.parsePlayers = function (text) {
     text = String(text || '').trim();
     const uid = () => Math.random().toString(36).slice(2, 9);
-    const norm = (p) => ({
+    const norm = (p, conv) => ({
       id: String(p.id || uid()),
       name: String(p.name || '').trim().replace(/\s+/g, ' ').slice(0, 40),
-      skill: Math.min(5, Math.max(1, Math.round(+p.skill) || 3)),
+      skill: (conv || T.clampRating)(p.skill),
       pos: T.POSN[p.pos] ? p.pos : '',
       gender: ['M', 'F'].includes(p.gender) ? p.gender : '',
     });
@@ -58,20 +64,21 @@ var VB = globalThis.VB || (globalThis.VB = {});
       try { d = JSON.parse(text); } catch (e) { return { error: 'That looks like JSON but could not be read: ' + e.message }; }
       const arr = Array.isArray(d) ? d : d.players;
       if (!Array.isArray(arr)) return { error: 'No "players" list found in the backup.' };
-      const players = arr.filter((p) => p && p.name).map(norm);
+      const conv = d.scale === 10 ? T.clampRating : T.fromStars;
+      const players = arr.filter((p) => p && p.name).map((p) => norm(p, conv));
       const ids = new Set(players.map((p) => p.id));
       const pairs = (Array.isArray(d.pairs) ? d.pairs : []).filter((r) => r && ids.has(r.a) && ids.has(r.b) && (r.type === 'together' || r.type === 'apart'));
-      return { players, pairs };
+      return { players, pairs, converted: d.scale !== 10 };
     }
     const players = [];
     for (const line of text.split(/\r?\n/)) {
       const parts = line.split(/\t|,|;/).map((s) => s.trim()).filter(Boolean);
       if (!parts.length) continue;
-      const o = { name: parts[0], skill: 3, pos: '', gender: '' };
+      const o = { name: parts[0], skill: T.DEFAULT_RATING, pos: '', gender: '' };
       for (const raw of parts.slice(1)) {
         const s = raw.toLowerCase();
-        if (/^\d/.test(s)) { o.skill = Math.min(5, Math.max(1, Math.round(parseFloat(s)) || 3)); continue; }
-        if (/^[*★]+$/.test(raw)) { o.skill = Math.min(5, raw.length); continue; }
+        if (/^\d/.test(s)) { o.skill = T.clampRating(parseFloat(s)); continue; }
+        if (/^[*★]+$/.test(raw)) { o.skill = T.fromStars(raw.length); continue; } // old-style stars
         if (['m', 'male', 'man', 'guy'].includes(s)) { o.gender = 'M'; continue; }
         if (['f', 'female', 'woman', 'girl'].includes(s)) { o.gender = 'F'; continue; }
         if (/^(s|set|setter)$/.test(s)) o.pos = 'S';
@@ -86,7 +93,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
   };
 
   // ------------------------------------------------------------ team division (vball-teams engine)
-  const W = { skill: 500, range: 250, pair: 400, role: 300, short: 0.25 };
+  const W = { skill: 125, range: 62.5, pair: 400, role: 300, short: 0.5 };
   const CS = 0, CH = 1, CA = 2;
   const CW = [0, 0, 0, 4, 4, 3, 3]; // setter, hitter, all-around (role rule only), then male, female, strong, newer
   const NC = CW.length;
@@ -97,15 +104,15 @@ var VB = globalThis.VB || (globalThis.VB = {});
   function buildCtx(players, pairs) {
     const n = players.length;
     const idx = new Map(players.map((p, i) => [p.id, i]));
-    const skill = players.map((p) => +p.skill || 3);
+    const skill = players.map((p) => +p.skill || T.DEFAULT_RATING);
     const cat = players.map((p) => {
       const c = [];
       const pi = { S: CS, H: CH, A: CA }[p.pos];
       if (pi != null) c.push(pi);
       if (p.gender === 'M') c.push(3);
       if (p.gender === 'F') c.push(4);
-      if (p.skill >= 4) c.push(5);
-      if (p.skill <= 2) c.push(6);
+      if (p.skill >= 7) c.push(5);
+      if (p.skill <= 3) c.push(6);
       return c;
     });
     const catTotal = new Float64Array(NC);
@@ -215,7 +222,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
     return map;
   };
 
-  T.teamStrength = (ps) => (ps.length ? ps.reduce((a, p) => a + (+p.skill || 3), 0) / ps.length : 0);
+  T.teamStrength = (ps) => (ps.length ? ps.reduce((a, p) => a + (+p.skill || T.DEFAULT_RATING), 0) / ps.length : 0);
 
   // ------------------------------------------------------------ lineups (any roster size)
   // Rotations over a full cycle; with extras, a bench player comes in at serve (see Team.rotate in game.js).
@@ -601,7 +608,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       name: t.name, color: t.color,
       players: t.playerIds.map((pid, i) => {
         const p = tour.playerMap[pid];
-        return { id: pid, name: p.name, display: T.shortNames(Object.values(tour.playerMap))[pid], number: t.numbers ? t.numbers[pid] : i + 1, height: T.HEIGHT_IN, skin: T.SKIN, stats: T.starStats(p.skill, p.pos) };
+        return { id: pid, name: p.name, display: T.shortNames(Object.values(tour.playerMap))[pid], number: t.numbers ? t.numbers[pid] : i + 1, height: T.HEIGHT_IN, skin: T.SKIN, stats: T.ratingStats(p.skill, p.pos) };
       }),
     };
   };

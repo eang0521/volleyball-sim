@@ -5,16 +5,24 @@ const VB = globalThis.VB, T = VB.T;
 let fails = 0;
 const check = (cond, msg) => { if (!cond) { fails++; console.log('FAIL:', msg); } };
 
-// Star/position stats: equal totals per star level, within 0..10.
-for (let s = 1; s <= 5; s++) {
-  const totals = Object.keys(T.OFFSETS).map((p) => Object.values(T.starStats(s, p)).reduce((a, b) => a + b, 0));
-  check(totals.every((x) => x === totals[0] && x === [1, 3, 5, 7, 9][s - 1] * 9), `star ${s} totals ${totals}`);
-  for (const p of Object.keys(T.OFFSETS)) check(Object.values(T.starStats(s, p)).every((v) => v >= 0 && v <= 10), `range ${s}${p}`);
+// Rating/position skills: equal totals per rating (rating x 9), within 0..10.
+for (let r = 1; r <= 10; r++) {
+  const totals = Object.keys(T.OFFSETS).map((p) => Object.values(T.ratingStats(r, p)).reduce((a, b) => a + b, 0));
+  check(totals.every((x) => x === r * 9), `rating ${r} totals ${totals}`);
+  for (const p of Object.keys(T.OFFSETS)) check(Object.values(T.ratingStats(r, p)).every((v) => v >= 0 && v <= 10), `range ${r}${p}`);
 }
-console.log('5★ hitter', T.starStats(5, 'H'), '\n1★ libero', T.starStats(1, 'L'));
+console.log('10 hitter', T.ratingStats(10, 'H'), '\n1 libero', T.ratingStats(1, 'L'));
+
+// Input parsing: old 1-5 star backups convert as 2x - 1; scale:10 backups and plain lines are taken as-is.
+const oldB = T.parsePlayers(JSON.stringify({ app: 'open-gym-teams', v: 1, players: [{ id: 'a', name: 'A', skill: 4 }, { id: 'b', name: 'B', skill: 1 }] }));
+check(oldB.converted && oldB.players[0].skill === 7 && oldB.players[1].skill === 1, 'old backup converts 4->7, 1->1');
+const newB = T.parsePlayers(JSON.stringify({ app: 'open-gym-teams', v: 1, scale: 10, players: [{ id: 'a', name: 'A', skill: 8 }] }));
+check(!newB.converted && newB.players[0].skill === 8, 'scale:10 backup kept');
+const lines = T.parsePlayers('Jamie, 7, hitter, F\nPat, ***\nLee');
+check(lines.players.map((p) => p.skill).join() === '7,5,5' && lines.players[0].pos === 'H', 'line parsing ' + lines.players.map((p) => p.skill));
 
 const src = process.argv[2] ? fs.readFileSync(process.argv[2], 'utf8') : null;
-const parsed = src ? T.parsePlayers(src) : { players: Array.from({ length: 63 }, (_, i) => ({ id: 'p' + i, name: 'P' + i, skill: 1 + (i % 5), pos: 'AHMLA'[i % 5], gender: i % 3 ? 'M' : 'F' })), pairs: [] };
+const parsed = src ? T.parsePlayers(src) : { players: Array.from({ length: 63 }, (_, i) => ({ id: 'p' + i, name: 'P' + i, skill: 1 + (i % 10), pos: 'AHMLA'[i % 5], gender: i % 3 ? 'M' : 'F' })), pairs: [] };
 const players = parsed.players;
 console.log('players', players.length);
 const k = Math.floor(players.length / 6);
@@ -24,10 +32,10 @@ console.log(`makeTeams k=${k} in ${Date.now() - t0}ms; sizes`, teams.map((t) => 
 const pm = Object.fromEntries(players.map((p) => [p.id, p]));
 const str = teams.map((t) => T.teamStrength(t.map((id) => pm[id])).toFixed(2));
 console.log('team strengths', str.join(' '));
-check(Math.max(...str) - Math.min(...str) < 0.35, 'teams balanced');
+check(Math.max(...str) - Math.min(...str) < 0.7, 'teams balanced (within 0.7 on the 1-10 scale)');
 // Lineups for 6/7-player teams
 t0 = Date.now();
-const pdata = (id) => ({ ...pm[id], height: 68, stats: T.starStats(pm[id].skill, pm[id].pos) });
+const pdata = (id) => ({ ...pm[id], height: 68, stats: T.ratingStats(pm[id].skill, pm[id].pos) });
 const lu = T.bestLineup(teams.find((t) => t.length === 7) ? teams.find((t) => t.length === 7).map(pdata) : teams[0].map(pdata));
 console.log(`bestLineup(${lu.length}) ${Date.now() - t0}ms; rotations:`, T.cycleRotations(lu).map((r) => r.front.map((p) => p.name.split(' ')[0]).join('/') + (r.bench.length ? ' [bench ' + r.bench.map((p) => p.name.split(' ')[0]).join(',') + ']' : '')).join(' | '));
 
