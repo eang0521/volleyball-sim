@@ -69,6 +69,20 @@ for (const n of [2, 3, 5, 8, 10]) {
   runRandom({ format: 'double', gfReset: false }, `double elim no reset (${n})`, n);
   runRandom({ format: 'roundrobin' }, `round robin (${n})`, n);
 }
+// Stepladder brackets: automatic byes for every team count, plus the 8-team "4, 2" example.
+for (const n of [2, 3, 4, 5, 6, 7, 8, 9, 10]) runRandom({ format: 'single', bracketStyle: 'ladder' }, `stepladder auto (${n})`, n);
+runRandom({ format: 'single', bracketStyle: 'ladder', ladderByes: '4, 2', thirdPlace: true }, 'stepladder 4,2 + 3rd (8)', 8);
+{
+  const tour = makeTour({ format: 'single', bracketStyle: 'ladder', ladderByes: '4, 2' });
+  tour.teams = tour.teams.slice(0, 8);
+  T.start(tour);
+  const seedOf = (id) => tour.seeds.indexOf(id) + 1;
+  const r1 = tour.matches.filter((m) => m.round === 1).map((m) => `${seedOf(m.a)}v${seedOf(m.b)}`).sort().join(',');
+  check(r1 === '5v8,6v7', 'ladder round 1 is 5v8, 6v7 (got ' + r1 + ')');
+  check(tour.matches.filter((m) => m.round === 3).every((m) => [1, 2].includes(seedOf(m.a))), 'seeds 1-2 enter in the semis');
+  check(tour.matches.length === 7, 'ladder of 8 has 7 matches');
+}
+runRandom({ format: 'pool-playoff', pools: 2, advanceMode: 'overall', advanceCount: 6, bracketStyle: 'ladder' }, 'pools 2, top 6 → stepladder');
 runRandom({ format: 'pool-playoff', pools: 2, advanceMode: 'perPool', advanceCount: 2 }, 'pools 2, top 2 each → single');
 runRandom({ format: 'pool-playoff', pools: 3, poolGames: 2, advanceMode: 'overall', advanceCount: 6, playoffType: 'double' }, 'pools 3, 2 games, top 6 → double');
 runRandom({ format: 'pool-playoff', pools: 1, poolDouble: true, advanceMode: 'overall', advanceCount: 4, thirdPlace: true }, 'one pool double RR, top 4 → single+3rd');

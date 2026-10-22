@@ -294,6 +294,8 @@ var VB = globalThis.VB || (globalThis.VB = {});
     advanceCount: 2, // per pool (perPool) or total (overall)
     playoffType: 'single', // 'single' | 'double'
     thirdPlace: false,
+    bracketStyle: 'standard', // 'standard' | 'ladder' (single elimination: top seeds get extra byes)
+    ladderByes: '', // e.g. "4, 2"; blank = automatic
     gfReset: true,
     match: {
       pool: { bestOf: 1, playAllSets: false, pointsPerSet: 25, finalSetPoints: 15, winBy2: true, pointCap: 0 },
@@ -346,6 +348,81 @@ var VB = globalThis.VB || (globalThis.VB = {});
       const cnt = ms.filter((x) => x.bracket === 'W' && x.round === m.round).length;
       m.label = m.label || roundName(cnt);
       m.isFinal = m.round === rounds;
+    }
+    return ms;
+  }
+
+  // ---- Stepladder: top seeds get byes into later rounds.
+  // `byes` lists how many teams sit out each round (e.g. [4, 2] for 8 teams). Each round, the teams entering
+  // and the previous round's winners are ranked by (expected) seed and paired best vs worst.
+  T.autoLadderByes = function (N) {
+    if (N < 3) return [];
+    const out = [];
+    if (N % 2 === 0) for (let b = N - 4; b >= 2; b -= 2) out.push(b); // 4 teams start, 2 more join each round
+    else for (let b = N - 2; b >= 1; b--) out.push(b); // classic one-at-a-time stepladder
+    return out;
+  };
+
+  T.parseByes = function (str) {
+    return String(str || '').split(/[\s,;]+/).filter(Boolean).map((x) => Math.round(+x));
+  };
+
+  // Plan the rounds. Returns {rounds:[{pairs:[[a,b]], ...}]} with slots as {seed} or {from: [roundIdx, pairIdx]}, or {error}.
+  T.ladderPlan = function (N, byesIn) {
+    if (N < 2) return { error: 'Need at least 2 teams.' };
+    let byes = byesIn && byesIn.length ? byesIn.slice() : T.autoLadderByes(N);
+    if (byes.some((b) => !Number.isFinite(b) || b < 0 || b >= N)) return { error: `Byes must be between 0 and ${N - 1}.` };
+    for (let i = 1; i < byes.length; i++) if (byes[i] >= byes[i - 1]) return { error: 'Byes must go down each round (e.g. 4, 2).' };
+    if (byes[byes.length - 1] !== 0) byes.push(0);
+    byes = byes.filter((b, i) => b > 0 || i === byes.findIndex((x) => x === 0));
+    const rounds = [];
+    let winners = []; // {from:[r,i], exp: expected seed, label}
+    let entered = N; // seeds >= entered (0-based) are already in
+    let r = 0;
+    while (true) {
+      const b = r < byes.length ? byes[r] : 0;
+      const entrants = [];
+      for (let s = b; s < entered; s++) entrants.push({ seed: s, exp: s, label: String(s + 1) });
+      entered = Math.min(entered, b);
+      const pool = entrants.concat(winners).sort((x, y) => x.exp - y.exp);
+      if (pool.length === 1 && b === 0) break; // champion decided
+      if (pool.length % 2) return { error: `Round ${r + 1} would have ${pool.length} teams — change the byes so every round pairs up evenly.` };
+      if (!pool.length) return { error: 'Byes leave a round with no teams.' };
+      const pairs = [];
+      for (let i = 0; i < pool.length / 2; i++) pairs.push([pool[i], pool[pool.length - 1 - i]]);
+      rounds.push({ pairs, byes: b });
+      const merge = (a, b) => (a + '/' + b).split('/').map(Number).sort((x, y) => x - y).join('/');
+      winners = pairs.map((p, i) => ({ from: [r, i], exp: Math.min(p[0].exp, p[1].exp), label: merge(p[0].label, p[1].label) }));
+      r++;
+      if (r > 64) return { error: 'Too many rounds.' };
+    }
+    return { rounds, byes: byes.filter((b) => b > 0) };
+  };
+
+  // Human-readable preview, e.g. "Round 1: 5 v 8, 6 v 7".
+  T.ladderPreview = function (plan) {
+    const n = plan.rounds.length;
+    const name = (r) => (r === n - 1 ? 'Final' : r === n - 2 && plan.rounds[r].pairs.length === 2 ? 'Semifinals' : `Round ${r + 1}`);
+    return plan.rounds.map((rd, r) => ({ name: name(r), games: rd.pairs.map(([a, b]) => `${a.label} v ${b.label}`) }));
+  };
+
+  function ladderElim(seeds, opts) {
+    const plan = T.ladderPlan(seeds.length, T.parseByes(opts.ladderByes));
+    if (plan.error) return singleElim(seeds, opts); // fall back to a standard bracket
+    const ids = plan.rounds.map(() => []);
+    const ms = [];
+    const n = plan.rounds.length;
+    const prev = T.ladderPreview(plan);
+    plan.rounds.forEach((rd, r) => {
+      rd.pairs.forEach((pair, i) => {
+        const src = (x) => (x.seed != null ? { seed: x.seed } : { winner: ids[x.from[0]][x.from[1]] });
+        const m = newMatch({ stage: 'playoff', bracket: 'W', round: r + 1, srcA: src(pair[0]), srcB: src(pair[1]), label: prev[r].name, isFinal: r === n - 1 });
+        ids[r][i] = m.id;
+        ms.push(m);
+      });
+    });
+    if (opts.thirdPlace && n >= 2 && plan.rounds[n - 2].pairs.length === 2) {
+      ms.push(newMatch({ stage: 'playoff', bracket: '3rd', round: n, label: '3rd place', srcA: { loser: ids[n - 2][0] }, srcB: { loser: ids[n - 2][1] } }));
     }
     return ms;
   }
@@ -468,7 +545,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
     tour.stage = 'playoff';
     tour.playoffSeeds = seeds;
     const type = c.format === 'double' || (c.format === 'pool-playoff' && c.playoffType === 'double') ? 'double' : 'single';
-    const ms = type === 'double' ? doubleElim(seeds, c) : singleElim(seeds, c);
+    const ms = type === 'double' ? doubleElim(seeds, c) : c.bracketStyle === 'ladder' ? ladderElim(seeds, c) : singleElim(seeds, c);
     for (const m of ms) {
       m.srcA = m.srcA.seed != null ? { team: seeds[m.srcA.seed] } : m.srcA;
       m.srcB = m.srcB.seed != null ? { team: seeds[m.srcB.seed] } : m.srcB;

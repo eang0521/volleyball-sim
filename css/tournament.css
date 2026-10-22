@@ -108,6 +108,11 @@ table.key td.dn { color: var(--bad); }
 .mgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
 .mgrid fieldset { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; margin: 0; }
 .mgrid legend { color: var(--text); font-weight: 650; padding: 0 4px; }
+.ladder { display: flex; flex-wrap: wrap; gap: 10px; }
+.ladder > div { background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; padding: 8px 12px; min-width: 150px; }
+.ladder h3 { margin: 0 0 4px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.ladder ul { margin: 0; padding: 0; list-style: none; font-size: 13px; font-variant-numeric: tabular-nums; }
+.ladder li { padding: 1px 0; }
 .summary { border-color: rgba(77,163,255,0.35); }
 .summary b { color: var(--text); }
 

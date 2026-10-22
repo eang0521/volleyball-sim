@@ -228,6 +228,11 @@
     for (const el of $$('[data-show]', f)) el.hidden = !el.dataset.show.split(' ').includes(c.format);
     const bracketType = c.format === 'double' || (c.format === 'pool-playoff' && c.playoffType === 'double') ? 'double' : 'single';
     for (const el of $$('[data-bracket]', f)) el.hidden = el.dataset.bracket !== bracketType;
+    f.elements.bracketStyle.value = c.bracketStyle || 'standard';
+    f.elements.ladderByes.value = c.ladderByes || '';
+    const ladder = bracketType === 'single' && c.bracketStyle === 'ladder';
+    for (const el of $$('[data-ladder]', f)) el.hidden = !ladder;
+    if (ladder) renderLadderPreview();
     renderMatchGrid();
     for (const el of f.elements) el.disabled = locked;
     renderSummary();
@@ -249,6 +254,8 @@
       c.advanceCount = Math.max(1, +f.elements.advanceCount.value || 1);
       c.playoffType = f.elements.playoffType.value;
       c.thirdPlace = f.elements.thirdPlace.checked;
+      c.bracketStyle = f.elements.bracketStyle.value;
+      c.ladderByes = T.parseByes(f.elements.ladderByes.value).join(', ');
       c.gfReset = f.elements.gfReset.checked;
       c.rules.netHeight = +f.elements.netHeight.value;
       c.rules.handlingCalls = +f.elements.handlingCalls.value;
@@ -259,12 +266,40 @@
     renderFormat();
   };
 
+  // How many teams reach the playoff bracket.
+  function playoffCount() {
+    const c = S.config, k = S.teams.length || S.k || maxTeams();
+    if (c.format !== 'pool-playoff') return k;
+    const pools = poolSizes().length;
+    return c.advanceMode === 'perPool' ? Math.min(k, c.advanceCount * pools) : Math.min(k, Math.max(2, c.advanceCount));
+  }
+  const ladderOn = () => {
+    const c = S.config;
+    return c.bracketStyle === 'ladder' && (c.format === 'single' || (c.format === 'pool-playoff' && c.playoffType === 'single'));
+  };
+  function ladderError() {
+    if (!ladderOn()) return null;
+    const plan = T.ladderPlan(playoffCount(), T.parseByes(S.config.ladderByes));
+    return plan.error || null;
+  }
+  // Live preview of the stepladder, e.g. "Round 2: 3 v 6/7, 4 v 5/8".
+  function renderLadderPreview() {
+    const N = playoffCount();
+    const plan = T.ladderPlan(N, T.parseByes(S.config.ladderByes));
+    const el = $('#ladderPreview');
+    if (plan.error) { el.innerHTML = `<p class="msg err">${esc(plan.error)}</p>`; return; }
+    el.innerHTML = `<p class="hint">${N} teams${S.config.ladderByes ? '' : ` — automatic byes: <b>${plan.byes.join(', ') || 'none'}</b>`}. Numbers are seeds; “5/8” means the winner of 5 v 8.</p>` +
+      `<div class="ladder">${T.ladderPreview(plan).map((r) => `<div><h3>${esc(r.name)}</h3><ul>${r.games.map((g) => `<li>${esc(g)}</li>`).join('')}</ul></div>`).join('')}</div>`;
+  }
+
   // Plain-language description of the chosen format and how many matches it means.
   function describe() {
     const c = S.config, k = S.teams.length || S.k || maxTeams();
     const fmtLen = (m) => (m.playAllSets ? `${m.bestOf} set${m.bestOf > 1 ? 's' : ''}` : m.bestOf === 1 ? '1 set' : `best of ${m.bestOf}`) + ` to ${m.pointsPerSet}`;
     const elim = (n, type) => (type === 'double' ? `${2 * n - 2}${c.gfReset ? '–' + (2 * n - 1) : ''}` : `${n - 1 + (c.thirdPlace ? 1 : 0)}`);
-    const bracketName = (type) => (type === 'double' ? 'double-elimination' : 'single-elimination');
+    const bracketName = (type) => (type === 'double' ? 'double-elimination' : ladderOn() ? 'stepladder (top seeds get extra byes)' : 'single-elimination');
+    const err = ladderError();
+    if (err) return `<span class="msg err">Stepladder byes don't work for ${playoffCount()} teams: ${esc(err)}</span>`;
     if (c.format === 'single' || c.format === 'double') {
       return `<b>${k} teams</b> in a ${bracketName(c.format)} bracket — <b>${elim(k, c.format)} matches</b>. Playoff matches: ${fmtLen(c.match.playoff)}; final: ${fmtLen(c.match.final)}.`;
     }
@@ -321,7 +356,7 @@
     if (!tour) {
       const ok = teamsValid();
       $('#startSummary').innerHTML = ok ? describe() : 'Make teams first (Teams tab). Every team needs at least 6 players.';
-      $('#btnStart').disabled = !ok;
+      $('#btnStart').disabled = !ok || !!ladderError();
       return;
     }
     tour.playerMap = pmap;

@@ -36,7 +36,7 @@ Open `tournament.html` (live: https://eang0521.github.io/volleyball-sim/tourname
    - Each lineup is ordered so every rotation is playable. Teams with 7 or more players sub in at the serve: each rotation, the next bench player comes in at zone 1 to serve and the player rotating out of zone 2 sits.
    - You can move players between teams.
 3. **Format**:
-   - **Single elimination**, with an optional third-place match.
+   - **Single elimination**, with an optional third-place match. Choose a **stepladder** bracket style to give top seeds extra byes: set the byes each round (e.g. `4, 2` for 8 teams gives 5v8 and 6v7, then 3v6/7 and 4v5/8, then 1v4/5/8 and 2v3/6/7), or leave it blank for an automatic ladder. A preview shows every round. This works after pool play too.
    - **Double elimination**, with an optional grand-final reset.
    - **Round robin**.
    - **Pool play → playoffs**: number of pools, games per team or a full round robin, an option to play each opponent twice, the top N per pool or overall advance, and a single- or double-elimination playoff.

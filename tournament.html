@@ -113,8 +113,19 @@
       <div class="card" data-show="single double pool-playoff">
         <h2>Bracket options</h2>
         <div class="grid">
+          <label data-bracket="single">Bracket style
+            <select name="bracketStyle">
+              <option value="standard">Standard (byes only to fill the bracket)</option>
+              <option value="ladder">Stepladder (top seeds get extra byes)</option>
+            </select>
+          </label>
+          <label data-bracket="single" data-ladder>Byes each round <input type="text" name="ladderByes" placeholder="Automatic" inputmode="numeric" aria-describedby="ladderHelp"></label>
           <label class="check" data-bracket="single"><input type="checkbox" name="thirdPlace"> Third-place match</label>
           <label class="check" data-bracket="double"><input type="checkbox" name="gfReset"> Grand final reset (the losers-bracket team must win twice)</label>
+        </div>
+        <div data-bracket="single" data-ladder>
+          <p class="hint" id="ladderHelp">How many top seeds sit out each round, e.g. <code>4, 2</code> for 8 teams: seeds 1–4 skip round 1, seeds 1–2 skip round 2. Leave blank for an automatic ladder.</p>
+          <div id="ladderPreview" class="ladder-preview" role="status"></div>
         </div>
       </div>
 
