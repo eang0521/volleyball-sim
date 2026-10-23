@@ -101,7 +101,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       for (const [k, v] of Object.entries(VB.SKILL_LEVELS)) rl.add(new Option(v.label, k));
       rl.value = VB.store.get('vb.level', 'intermediate');
       rl.onchange = () => VB.store.set('vb.level', rl.value);
-      $('#btn-reel').onclick = () => { const r = this.game.recorder; if (r) app.playHighlights(r.top(5)); };
+      $('#btn-reel').onclick = () => { const r = this.game.recorder; if (r) app.playHighlights(r.best(10)); };
       $('#hl-list').onclick = (e) => {
         const b = e.target.closest('[data-hl]');
         const r = this.game.recorder;
@@ -163,7 +163,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
     // ---- highlights
     renderHighlights() {
       const g = this.game, rec = g.recorder;
-      const list = rec ? rec.top(15) : [];
+      const list = rec ? rec.best(10) : [];
       $('#hl-count').textContent = rec ? `${rec.list.length} points so far` : '';
       $('#btn-reel').disabled = !list.some((h) => h.frames);
       $('#hl-list').innerHTML = list.length ? list.map((h, i) => this.hlItem(h, i)).join('') : '<li class="hint">Highlights appear as points are played.</li>';
@@ -263,7 +263,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
         const btn = el.querySelector('[data-act=new]');
         if (btn) btn.onclick = () => this.app.newMatch();
         const hb = el.querySelector('[data-act=hl]');
-        if (hb) hb.onclick = () => { const r = this.game.recorder; if (r) this.app.playHighlights(r.top(5)); };
+        if (hb) hb.onclick = () => { const r = this.game.recorder; if (r) this.app.playHighlights(r.best(10)); };
       }
     }
 

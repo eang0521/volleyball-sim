@@ -22,7 +22,7 @@
     newMatch() {
       if (this.replay) this.stopReplay();
       this.game = new VB.Game(this.teamsData, this.settings, VB.MODE);
-      VB.HL.attach(this.game, { keep: 8 });
+      VB.HL.attach(this.game, { keep: 10 });
       this.renderer.setGame(this.game);
       this.ui.reset();
       this.acc = 0;

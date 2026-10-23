@@ -5,7 +5,7 @@ VB.MODE = 'casual';
 onmessage = (e) => {
   const { job, teams, settings } = e.data;
   try {
-    const result = VB.T.simMatch(teams, settings, { highlights: 5 });
+    const result = VB.T.simMatch(teams, settings, { highlights: 10 });
     postMessage({ job, result });
   } catch (err) {
     postMessage({ job, error: String(err && err.stack || err) });

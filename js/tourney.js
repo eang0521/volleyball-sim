@@ -717,7 +717,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
     let steps = 0;
     while (g.phase !== 'over' && steps < maxSteps) { g.update(DT); steps++; }
     const res = T.gameResult(g, teamsData);
-    if (rec) res.highlights = rec.top(opts.highlights);
+    if (rec) res.highlights = rec.best(opts.highlights);
     return res;
   };
 })();

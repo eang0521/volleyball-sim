@@ -18,7 +18,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
   class Recorder {
     constructor(game, opts = {}) {
       this.g = game;
-      this.keep = opts.keep || 8; // replays kept per match (all points keep their score/caption)
+      this.keep = opts.keep || 10; // replays kept per match (all points keep their score/caption)
       this.list = [];
       this.version = 0;
       this.buf = null;
@@ -70,6 +70,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       h.netTop = VB.C.netTop;
       h.sgn = this.meta.sgn;
       h.players = this.players.map((p) => ({ team: p.team.idx, name: p.name, display: p.display, number: p.number, H: p.H, skin: p.skin }));
+      h.seq = this.list.length; // point number in the match, for in-game order
       this.list.push(h);
       // Keep replays only for the best few to save memory.
       const ranked = this.list.slice().sort((a, b) => b.score - a.score);
@@ -77,6 +78,8 @@ var VB = globalThis.VB || (globalThis.VB = {});
       this.version++;
     }
     top(n) { return this.list.slice().sort((a, b) => b.score - a.score).slice(0, n); }
+    // The n most exciting points, in the order they happened.
+    best(n) { return HL.inOrder(this.top(n)); }
   }
   HL.Recorder = Recorder;
   HL.attach = (game, opts) => (game.recorder = new Recorder(game, opts));
@@ -203,6 +206,8 @@ var VB = globalThis.VB || (globalThis.VB = {});
       teams: g.teams.map((t) => ({ name: t.name, color: t.color })), pointT: pend.pointT, exchanges,
     };
   };
+
+  HL.inOrder = (list) => list.slice().sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
 
   // 1-5 flames for display.
   HL.flames = (score) => (score >= 14 ? 5 : score >= 9 ? 4 : score >= 6 ? 3 : score >= 3.5 ? 2 : 1);

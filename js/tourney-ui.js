@@ -327,18 +327,33 @@
     if (!res || !res.highlights || !m) return;
     const A = tById(m.a), B = tById(m.b);
     const label = `${A.name} vs ${B.name}${m.label ? ' · ' + m.label : ''}`;
+    const w = stageWeight(m);
     res.highlights = res.highlights.map((h) => {
       h.label = label; h.matchId = m.id;
+      h.baseScore = h.score; h.stageWeight = w; h.score = +(h.score * w).toFixed(2);
       VB.HL.store.put(h);
       return VB.HL.meta(h);
     });
   }
+  // Playoff points count a little more the deeper the round: pools 1.0, early playoff ~1.1, semis ~1.2, finals 1.3.
+  function stageWeight(m) {
+    if (m.stage !== 'playoff') return 1;
+    if (m.isFinal || m.bracket === 'GF' || m.bracket === 'GF2') return 1.3;
+    if (m.bracket === '3rd') return 1.2;
+    const same = S.tour.matches.filter((x) => x.stage === 'playoff' && x.bracket === m.bracket);
+    const maxRound = Math.max(...same.map((x) => x.round));
+    const wMax = Math.max(...S.tour.matches.filter((x) => x.bracket === 'W').map((x) => x.round), 1);
+    // Rounds left until the final decide the weight; the losers bracket sits a touch lower.
+    const toGo = m.bracket === 'L' ? (maxRound - m.round) / 2 + 1 : wMax - m.round;
+    const w = toGo <= 0 ? 1.25 : Math.max(1.05, 1.2 - 0.05 * (toGo - 1));
+    return +(m.bracket === 'L' ? w - 0.03 : w).toFixed(2);
+  }
   const allHighlights = () => S.tour.matches.flatMap((m) => (m.result && m.result.highlights) || []).sort((a, b) => b.score - a.score);
-  function hlItem(h) {
+  function hlItem(h, rank) {
     const [A, B] = h.teams;
     return `<li class="hl">
-      <div class="hl-top"><span class="flames" title="Excitement ${h.score.toFixed(1)}">${'🔥'.repeat(VB.HL.flames(h.score))}</span><span class="hl-score">Set ${h.set} · <span class="dot" style="background:${A.color}"></span>${h.before[0]}–${h.before[1]}<span class="dot" style="background:${B.color}"></span></span></div>
-      <div class="hl-label">${esc(h.label || '')}</div>
+      <div class="hl-top">${rank ? `<span class="hl-rank">#${rank}</span>` : ''}<span class="flames" title="Excitement ${h.score.toFixed(1)}">${'🔥'.repeat(VB.HL.flames(h.score))}</span><span class="hl-score">Set ${h.set} · <span class="dot" style="background:${A.color}"></span>${h.before[0]}–${h.before[1]}<span class="dot" style="background:${B.color}"></span></span></div>
+      <div class="hl-label">${esc(h.label || '')}${h.stageWeight > 1 ? ` <span class="tag" title="Playoff weighting">×${h.stageWeight} playoff</span>` : ''}</div>
       <div class="hl-title">${esc(h.title)}</div>
       ${h.detail ? `<div class="hl-detail">${esc(h.detail)}</div>` : ''}
       <div class="hl-tags">${h.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</div>
@@ -349,9 +364,13 @@
     const list = allHighlights();
     $('#hlCard').hidden = !list.length;
     if (!list.length) return;
-    $('#hlList').innerHTML = list.slice(0, 10).map(hlItem).join('');
+    $('#hlList').innerHTML = list.slice(0, 10).map((h, i) => hlItem(h, i + 1)).join('');
   }
-  $('#btnHlReel').onclick = () => viewer.openReplay(allHighlights().filter((h) => h.hasReplay).slice(0, 10));
+  // Countdown: #10 first, #1 last.
+  $('#btnHlReel').onclick = () => {
+    const top = allHighlights().filter((h) => h.hasReplay).slice(0, 10).map((h, i) => Object.assign({}, h, { rank: i + 1 }));
+    viewer.openReplay(top.reverse());
+  };
 
   $('#btnReset').onclick = () => {
     if (sim.busy) return;
@@ -477,7 +496,7 @@
     if (s && !sim.busy) sim.run([s.dataset.sim]);
     const hw = e.target.closest('[data-hlw]'), mh = e.target.closest('[data-mhl]');
     if (hw) { const h = allHighlights().find((x) => x.id === hw.dataset.hlw); if (h) viewer.openReplay([h]); }
-    if (mh) { const m = S.tour.matches.find((x) => x.id === mh.dataset.mhl); viewer.openReplay(m.result.highlights.filter((h) => h.hasReplay).sort((a, b) => b.score - a.score)); }
+    if (mh) { const m = S.tour.matches.find((x) => x.id === mh.dataset.mhl); viewer.openReplay(VB.HL.inOrder(m.result.highlights.filter((h) => h.hasReplay))); }
   };
   $('#btnSimNext').onclick = () => { const m = T.nextPlayable(S.tour); if (m) sim.run([m.id]); };
   $('#btnSimAvail').onclick = () => sim.run(S.tour.matches.filter(T.isPlayable).map((m) => m.id));
@@ -530,7 +549,7 @@
         this.inflight.set(id, null);
         setTimeout(() => {
           const j = this.job(id);
-          this.finish(null, { job: id, result: T.simMatch(j.teams, j.settings, { highlights: 5 }) });
+          this.finish(null, { job: id, result: T.simMatch(j.teams, j.settings, { highlights: 10 }) });
         }, 16);
       }
     },
@@ -556,7 +575,7 @@
       this.match = m;
       this.teams = [T.gameTeam(S.tour, m.a), T.gameTeam(S.tour, m.b)];
       this.game = new VB.Game(this.teams, T.gameSettings(S.tour, m, false), 'tournament');
-      VB.HL.attach(this.game, { keep: 5 });
+      VB.HL.attach(this.game, { keep: 10 });
       this.mode = 'live'; $('#vFinish').hidden = false; $('#vNext').hidden = true;
       $('#viewer').hidden = false;
       document.body.style.overflow = 'hidden';
@@ -575,7 +594,8 @@
     // ---- highlight replays
     async openReplay(metas) {
       if (!metas.length) return;
-      const list = (await Promise.all(metas.map((m) => VB.HL.store.get(m)))).filter(Boolean);
+      // Keep per-reel extras (like the countdown rank) on top of the stored replay.
+      const list = (await Promise.all(metas.map(async (m) => { const h = await VB.HL.store.get(m); return h && Object.assign({}, h, { rank: m.rank }); }))).filter(Boolean);
       if (!list.length) { $('#simStatus').textContent = 'Those replays are no longer saved in this browser.'; return; }
       this.mode = 'replay'; this.reel = list; this.reelPos = -1; this.game = null;
       this.recorded = true; this.paused = false;
@@ -586,7 +606,7 @@
       this.renderer.setCameraMode($('#vCam').value);
       $('#vFinish').hidden = true;
       $('#vNext').hidden = list.length < 2;
-      $('#vLog').innerHTML = list.map((h, i) => `<li data-i="${i}">${i + 1}. ${esc(h.title)} <span class="hl-label">— ${esc(h.label || '')}</span></li>`).join('');
+      $('#vLog').innerHTML = list.map((h, i) => `<li data-i="${i}">${h.rank ? '#' + h.rank : i + 1 + '.'} ${esc(h.title)} <span class="hl-label">— ${esc(h.label || '')}</span></li>`).join('');
       this.nextReplay();
       this.syncControls();
       this.last = performance.now();
@@ -608,7 +628,7 @@
       this.replay = new VB.HL.Replay(h);
       VB.C.netTop = h.netTop;
       this.renderer.setGame(this.replay);
-      $('#vBanner').innerHTML = `<span class="rb-badge">REPLAY${this.reel.length > 1 ? ` ${this.reelPos + 1}/${this.reel.length}` : ''}</span><span class="flames">${'🔥'.repeat(VB.HL.flames(h.score))}</span> ${esc(h.title)}${h.detail ? `<div class="hl-detail">${esc(h.detail)}</div>` : ''}`;
+      $('#vBanner').innerHTML = `<span class="rb-badge">${h.rank ? `#${h.rank}` : `REPLAY${this.reel.length > 1 ? ` ${this.reelPos + 1}/${this.reel.length}` : ''}`}</span><span class="flames">${'🔥'.repeat(VB.HL.flames(h.score))}</span> ${esc(h.title)}${h.detail ? `<div class="hl-detail">${esc(h.detail)}</div>` : ''}`;
       $('#vBanner').hidden = false;
       for (const li of $$('#vLog li')) li.style.fontWeight = +li.dataset.i === this.reelPos ? '700' : '';
     },
@@ -673,7 +693,7 @@
     record() {
       this.recorded = true;
       const res = T.gameResult(this.game, this.teams);
-      res.highlights = this.game.recorder.top(5);
+      res.highlights = this.game.recorder.best(10);
       stashHighlights(res, this.match);
       T.applyResult(S.tour, this.match.id, res);
       save();

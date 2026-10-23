@@ -30,8 +30,8 @@ Every point is recorded as a light replay and scored for excitement:
 - **The moment**: late points in close sets, deuce, set and match points saved, set- and match-winning points, the deciding set, and comebacks from 5 or more down. Errors count for much less, even when they're clutch.
 
 Each highlight gets a caption, such as *"Set point saved! Fay A. (Orange) puts away a 30 mph back-row kill. After an 8-exchange rally and a diving dig (Hal A.)."*, along with tags and a 🔥 rating. Replays play in 3D with slow motion on the final moment.
-- **Match pages**: open the **Highlights** tab for the ranked list, single replays and a **Top 5 reel**. The match-over banner also has a **▶ Highlights** button.
-- **Tournament**: every match keeps its top 5, including the instantly simulated ones. There's a tournament **Highlights** card with a **Top 10 reel**, and a **★ Highlights** button on each finished match. Replays are kept in the browser's storage (IndexedDB), so they survive a reload.
+- **Match pages**: the **Highlights** tab shows the match's 10 most exciting points in the order they happened, each with its own replay. **▶ Play highlights** plays them all, and the match-over banner has a **▶ Highlights** button too.
+- **Tournament**: every match keeps about 10 highlights in game order, including the instantly simulated ones. Each finished match gets a **★ Highlights** button. The tournament **Highlights** card ranks the top 10, and its **Top 10 reel** counts down from #10 to #1. Playoff points are weighted a little more the deeper the round: early rounds about ×1.1, semifinals ×1.2, finals ×1.3. Replays are kept in the browser's storage (IndexedDB), so they survive a reload.
 
 `node tools/highlights-test.js [casual|competitive] [matches]` prints the top highlights from simulated matches.
 
