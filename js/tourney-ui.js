@@ -327,33 +327,20 @@
     if (!res || !res.highlights || !m) return;
     const A = tById(m.a), B = tById(m.b);
     const label = `${A.name} vs ${B.name}${m.label ? ' · ' + m.label : ''}`;
-    const w = stageWeight(m);
+    const tier = T.stageTier(S.tour, m), w = T.ROUND_WEIGHTS[tier];
     res.highlights = res.highlights.map((h) => {
       h.label = label; h.matchId = m.id;
-      h.baseScore = h.score; h.stageWeight = w; h.score = +(h.score * w).toFixed(2);
+      h.baseScore = h.score; h.stageWeight = w; h.tier = tier; h.score = +(h.score * w).toFixed(2);
       VB.HL.store.put(h);
       return VB.HL.meta(h);
     });
-  }
-  // Playoff points count a little more the deeper the round: pools 1.0, early playoff ~1.1, semis ~1.2, finals 1.3.
-  function stageWeight(m) {
-    if (m.stage !== 'playoff') return 1;
-    if (m.isFinal || m.bracket === 'GF' || m.bracket === 'GF2') return 1.3;
-    if (m.bracket === '3rd') return 1.2;
-    const same = S.tour.matches.filter((x) => x.stage === 'playoff' && x.bracket === m.bracket);
-    const maxRound = Math.max(...same.map((x) => x.round));
-    const wMax = Math.max(...S.tour.matches.filter((x) => x.bracket === 'W').map((x) => x.round), 1);
-    // Rounds left until the final decide the weight; the losers bracket sits a touch lower.
-    const toGo = m.bracket === 'L' ? (maxRound - m.round) / 2 + 1 : wMax - m.round;
-    const w = toGo <= 0 ? 1.25 : Math.max(1.05, 1.2 - 0.05 * (toGo - 1));
-    return +(m.bracket === 'L' ? w - 0.03 : w).toFixed(2);
   }
   const allHighlights = () => S.tour.matches.flatMap((m) => (m.result && m.result.highlights) || []).sort((a, b) => b.score - a.score);
   function hlItem(h, rank) {
     const [A, B] = h.teams;
     return `<li class="hl">
       <div class="hl-top">${rank ? `<span class="hl-rank">#${rank}</span>` : ''}<span class="flames" title="Excitement ${h.score.toFixed(1)}">${'🔥'.repeat(VB.HL.flames(h.score))}</span><span class="hl-score">Set ${h.set} · <span class="dot" style="background:${A.color}"></span>${h.before[0]}–${h.before[1]}<span class="dot" style="background:${B.color}"></span></span></div>
-      <div class="hl-label">${esc(h.label || '')}${h.stageWeight > 1 ? ` <span class="tag" title="Playoff weighting">×${h.stageWeight} playoff</span>` : ''}</div>
+      <div class="hl-label">${esc(h.label || '')}${h.stageWeight > 1 ? ` <span class="tag" title="Playoff round weighting">×${(+h.stageWeight).toFixed(2)} playoff</span>` : ''}</div>
       <div class="hl-title">${esc(h.title)}</div>
       ${h.detail ? `<div class="hl-detail">${esc(h.detail)}</div>` : ''}
       <div class="hl-tags">${h.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</div>

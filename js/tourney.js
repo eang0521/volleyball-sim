@@ -677,6 +677,22 @@ var VB = globalThis.VB || (globalThis.VB = {});
 
   T.nextPlayable = (tour) => tour.matches.find((m) => T.isPlayable(m));
 
+  // ------------------------------------------------------------ highlight round weights
+  // Highlights from later playoff rounds score higher.
+  T.ROUND_WEIGHTS = { pool: 1, early: 7 / 6, quarter: 6 / 5, semi: 5 / 4, winnersFinal: 4 / 3, final: 3 / 2 };
+  T.TIER_LABELS = { pool: 'Pool play', early: 'Early rounds (R16 and before)', quarter: 'Quarterfinals', semi: 'Semifinals / 3rd place', winnersFinal: "Winners' final (double elim)", final: 'Final / grand final' };
+  T.stageTier = function (tour, m) {
+    if (m.stage !== 'playoff') return 'pool';
+    if (m.isFinal || m.bracket === 'GF' || m.bracket === 'GF2') return 'final';
+    if (m.bracket === '3rd') return 'semi';
+    const rounds = (b) => tour.matches.filter((x) => x.stage === 'playoff' && x.bracket === b).map((x) => x.round);
+    const wMax = Math.max(1, ...rounds('W'));
+    // Rounds left before the final; the losers bracket sits one tier below the matching winners round.
+    const toGo = m.bracket === 'L' ? (Math.max(...rounds('L')) - m.round) / 2 + 2 : wMax - m.round;
+    return toGo <= 0 ? 'winnersFinal' : toGo <= 1 ? 'semi' : toGo <= 2 ? 'quarter' : 'early';
+  };
+  T.stageWeight = (tour, m) => T.ROUND_WEIGHTS[T.stageTier(tour, m)];
+
   // ------------------------------------------------------------ simulation glue
   // Team data in the format VB.Game expects (lineup order = rotation order).
   T.gameTeam = function (tour, teamId) {
