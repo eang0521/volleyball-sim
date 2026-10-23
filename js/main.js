@@ -20,7 +20,9 @@
     game: null,
 
     newMatch() {
+      if (this.replay) this.stopReplay();
       this.game = new VB.Game(this.teamsData, this.settings, VB.MODE);
+      VB.HL.attach(this.game, { keep: 8 });
       this.renderer.setGame(this.game);
       this.ui.reset();
       this.acc = 0;
@@ -47,6 +49,30 @@
       this.pendingStep = true;
     },
     setCamera(m) { this.renderer.setCameraMode(m); store.set('vb.camera', m); },
+    // ---- highlight replays (the live match waits while they play)
+    replay: null, reel: [], reelPos: 0, replayPaused: false, replayHold: 0,
+    playHighlights(list) {
+      list = list.filter((h) => h.frames);
+      if (!list.length) return;
+      this.reel = list; this.reelPos = -1;
+      this.nextHighlight();
+    },
+    nextHighlight() {
+      this.reelPos++;
+      const h = this.reel[this.reelPos];
+      if (!h) { this.stopReplay(); return; }
+      this.replay = new VB.HL.Replay(h);
+      this.replayPaused = false; this.replayHold = 0;
+      VB.C.netTop = h.netTop;
+      this.renderer.setGame(this.replay);
+      this.ui.showReplay(h, this.reelPos, this.reel.length);
+    },
+    stopReplay() {
+      this.replay = null; this.reel = [];
+      VB.C.netTop = this.settings.netHeight;
+      this.renderer.setGame(this.game);
+      this.ui.hideReplay();
+    },
   };
 
   const saved = store.get('vb.teams', null);
@@ -66,6 +92,14 @@
     const real = Math.min(0.1, (now - last) / 1000);
     last = now;
     let simDt = 0;
+    if (app.replay) {
+      // Replay mode: the live match is frozen until the replay ends.
+      if (!app.replayPaused && app.replay.advance(real)) { app.replayHold += real; if (app.replayHold > 1.2) app.nextHighlight(); }
+      app.renderer.render(app.replayPaused ? 0 : real * app.replay.rate(), { speed: 1, showMarkers: false, showNames: app.settings.showNames });
+      app.ui.update();
+      requestAnimationFrame(frame);
+      return;
+    }
     if (!app.paused) {
       app.acc += real * app.speed;
       let n = 0;

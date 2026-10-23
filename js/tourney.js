@@ -710,11 +710,14 @@ var VB = globalThis.VB || (globalThis.VB = {});
   };
 
   // Run a whole match without rendering.
-  T.simMatch = function (teamsData, settings) {
+  T.simMatch = function (teamsData, settings, opts = {}) {
     const g = new VB.Game(teamsData, settings, 'tournament');
+    const rec = opts.highlights && VB.HL ? VB.HL.attach(g, { keep: opts.highlights }) : null;
     const DT = VB.C.DT, maxSteps = 240 * 60 * 180;
     let steps = 0;
     while (g.phase !== 'over' && steps < maxSteps) { g.update(DT); steps++; }
-    return T.gameResult(g, teamsData);
+    const res = T.gameResult(g, teamsData);
+    if (rec) res.highlights = rec.top(opts.highlights);
+    return res;
   };
 })();

@@ -144,6 +144,19 @@ table.stand tr.adv td:first-child { box-shadow: inset 3px 0 0 var(--good); }
 .match .lbl2 { color: var(--muted); font-size: 11px; }
 .match.ready { border-color: rgba(77,163,255,0.5); }
 .match.pool { display: grid; grid-template-columns: 1fr auto; align-items: center; }
+.hl-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+.hl { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 4px; background: var(--surface-2); }
+.hl-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.hl-label { color: var(--muted); font-size: 12px; }
+.hl-score { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.hl-title { font-weight: 650; }
+.hl-detail { color: var(--muted); font-size: 13px; }
+.hl-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: rgba(255,255,255,0.08); color: var(--muted); }
+.hl button { justify-self: start; }
+.flames { font-size: 12px; letter-spacing: -2px; }
+.rb-badge { background: var(--gold); color: #1a1400; font-weight: 800; font-size: 11px; letter-spacing: 0.08em; padding: 2px 7px; border-radius: 5px; margin-right: 6px; }
+.vbanner .hl-detail { font-weight: 400; margin-top: 3px; }
 .leaders { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
 .leaders ol { margin: 4px 0 0; padding-left: 20px; font-size: 13px; }
 .leaders li { margin: 2px 0; }

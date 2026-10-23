@@ -194,6 +194,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       this.pendingIllegal = null;
       this.lastBlock = null;
       this.rallyStart = this.time;
+      this.rallyCrossings = 0; // legal trips over the net this rally (for highlights)
       this.path = null;
       this.pathId = (this.pathId || 0) + 1;
       for (const t of this.teams) {
@@ -305,6 +306,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
 
       if (ph !== 'rally' && ph !== 'serve') this.stepBallLoose();
       for (const p of this.allPlayers) this.animatePose(p);
+      if (this.recorder) this.recorder.tick(this);
     }
 
     updateHeldBall() {
@@ -605,6 +607,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
         return this.fault(lt, 'out', `ball hits the net outside the antenna`);
       }
       if (ev === 'net' || ev === 'tape') {
+        if (ev === 'tape' && lt) lt.tape = true;
         if (lt && lt.kind === 'serve' && ev === 'net' && !this.netHitLogged) {
           this.netHitLogged = true;
         }
@@ -622,6 +625,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
           return this.fault(lt, 'out', `ball crosses above the antenna`);
         }
         if (this.pendingIllegal) return this.callIllegalAttack();
+        this.rallyCrossings++;
         for (const t of this.teams) t.ai.nextPlan = 0;
       }
       // Floor
@@ -1314,6 +1318,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       else if (outcome === 'tool') this.addLog(`${this.pn(attacker)} tools the block`, attacker.team, 'info');
       else this.addLog(`Touched by the block (${this.pn(p)})`, t, 'info');
       this.registerContact(p, 'block');
+      Object.assign(this.lastTouch, { outcome, vin: sp, helpers: helpers.length });
       this.onBallEvent(0.05);
     }
 
@@ -1384,7 +1389,8 @@ var VB = globalThis.VB || (globalThis.VB = {});
       const dist = b.pos.distXZ(target);
       let T = 0.95 + 0.07 * dist + (outAim ? 0.25 : 0);
       const pShank = clamp(((err - 0.6) * 0.35 + Math.max(0, info.vin - 17) * 0.012) * prof.shank, 0, 0.55);
-      if (rand() < pShank) {
+      const shanked = rand() < pShank;
+      if (shanked) {
         // Shanked: the ball flies off somewhere unplanned.
         const ang = rand() * Math.PI * 2;
         const hs = randRange(1, 5) * (0.5 + info.vin / 20) * prof.shankFar;
@@ -1403,6 +1409,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       b.float = null;
       if (kind === 'reception') p.box.ra++;
       this.registerContact(p, kind);
+      Object.assign(this.lastTouch, { vin: info.vin, dive: !!info.dive, shank: shanked });
       if (kind === 'dig') this.pendingDig = { team: t, box: p.box };
       this.onBallEvent();
       if (setterOut) this.callSetterOut(t, p);
@@ -1450,6 +1457,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       if (p.front && info.type === 'over' && b.pos.y > C.netTop - 0.05 && Math.abs(b.pos.x) < 1.6 && rand() < 0.05 * p.s.awareness * quality) {
         this.addLog(`${this.pn(p)} dumps it on two`, t, 'info');
         this.doAttack(p, 0.6, 'tip');
+        if (this.lastTouch && this.lastTouch.player === p) this.lastTouch.dump = true;
         return;
       }
       // Chasing a ball far off the court: just bump it high back toward the middle.
@@ -1489,6 +1497,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       b.float = null;
       this.addLog(`${this.pn(p)} chases it down`, t, 'info');
       this.registerContact(p, 'pass');
+      Object.assign(this.lastTouch, { save: true, dive: !!info.dive, vin: info.vin });
       this.onBallEvent();
     }
 
@@ -1606,6 +1615,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       p.box.ta++;
       this.shotKind = cd.kind;
       this.registerContact(p, 'attack');
+      Object.assign(this.lastTouch, { speed: v.len(), shot: cd.kind, back: !p.front, q });
       this.onBallEvent();
     }
 
@@ -1631,6 +1641,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       if (fromAttack) p.box.ta++;
       this.registerContact(p, fromAttack ? 'attack' : 'free');
       if (fromAttack) this.shotKind = 'down';
+      Object.assign(this.lastTouch, { speed: v.len(), shot: fromAttack ? 'down' : 'free', back: !p.front });
       this.onBallEvent();
     }
 
@@ -1676,6 +1687,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       this.rallies++;
       this.netHitLogged = false;
       this.registerContact(p, 'serve');
+      Object.assign(this.lastTouch, { speed: v.len(), serveType: type });
       const label = type === 'topspin' ? 'jump serve' : type === 'jumpfloat' ? 'jump float' : type === 'underhand' ? 'underhand serve' : 'float serve';
       this.addLog(`${this.pn(p)} ${label}`, t, 'serve');
       this.onBallEvent();
@@ -1695,6 +1707,10 @@ var VB = globalThis.VB || (globalThis.VB = {});
     pointTo(winner, reason, culprit, text, where, netFaultPlayer) {
       if (this.phase !== 'rally' && this.phase !== 'serve') return;
       const loser = this.other(winner);
+      const hlCtx = this.recorder ? {
+        before: [this.teams[0].score, this.teams[1].score], setsBefore: [this.teams[0].sets, this.teams[1].sets],
+        target: this.setTarget, deciding: this.isDecidingSet, setsToWin: this.setsToWin, setNo: this.setNo,
+      } : null;
       const lastW = [...this.contacts].reverse().find((c) => c.team === winner);
       const lastL = [...this.contacts].reverse().find((c) => c.team === loser);
       let desc = text || '';
@@ -1800,6 +1816,9 @@ var VB = globalThis.VB || (globalThis.VB = {});
           this.addLog(`${winner.name} take set ${this.setNo} ${s}–${o}`, winner, 'header');
         }
       }
+      if (hlCtx) this.recorder.onPoint(this, Object.assign(hlCtx, {
+        winner: winner.idx, reason, desc, setWon: won, matchWon: this.pendingSetEnd === 'match' && won, netFault: !!netFaultPlayer,
+      }));
     }
   }
 

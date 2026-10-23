@@ -101,6 +101,12 @@ var VB = globalThis.VB || (globalThis.VB = {});
       for (const [k, v] of Object.entries(VB.SKILL_LEVELS)) rl.add(new Option(v.label, k));
       rl.value = VB.store.get('vb.level', 'intermediate');
       rl.onchange = () => VB.store.set('vb.level', rl.value);
+      $('#btn-reel').onclick = () => { const r = this.game.recorder; if (r) app.playHighlights(r.top(5)); };
+      $('#hl-list').onclick = (e) => {
+        const b = e.target.closest('[data-hl]');
+        const r = this.game.recorder;
+        if (b && r) { const h = r.list.find((x) => x.id === b.dataset.hl); if (h) app.playHighlights([h]); }
+      };
       $('#btn-random-teams').onclick = () => app.newTeams(VB.randomTeams(casual() ? 'casual' : rl.value));
       if (casual()) rl.closest('label').hidden = true;
       const ml = $('#mode-link');
@@ -154,6 +160,42 @@ var VB = globalThis.VB || (globalThis.VB = {});
       this.app.renderer.resize();
     }
 
+    // ---- highlights
+    renderHighlights() {
+      const g = this.game, rec = g.recorder;
+      const list = rec ? rec.top(15) : [];
+      $('#hl-count').textContent = rec ? `${rec.list.length} points so far` : '';
+      $('#btn-reel').disabled = !list.some((h) => h.frames);
+      $('#hl-list').innerHTML = list.length ? list.map((h, i) => this.hlItem(h, i)).join('') : '<li class="hint">Highlights appear as points are played.</li>';
+    }
+    hlItem(h, i) {
+      const fl = VB.HL.flames(h.score);
+      const [A, B] = h.teams;
+      return `<li class="hl" data-i="${i}">
+        <div class="hl-top"><span class="flames" title="Excitement ${h.score.toFixed(1)}">${'🔥'.repeat(fl)}</span><span class="hl-score">Set ${h.set} · <span class="dot" style="background:${A.color}"></span>${h.before[0]}–${h.before[1]}<span class="dot" style="background:${B.color}"></span> → ${h.after[0]}–${h.after[1]}</span></div>
+        <div class="hl-title">${esc(h.title)}</div>
+        ${h.detail ? `<div class="hl-detail">${esc(h.detail)}</div>` : ''}
+        <div class="hl-tags">${h.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</div>
+        <button class="small" data-hl="${h.id}" ${h.frames ? '' : 'disabled title="Replay not kept"'}>▶ Replay</button>
+      </li>`;
+    }
+    showReplay(h, idx, total) {
+      const el = $('#replayBar');
+      el.hidden = false;
+      el.innerHTML = `<div class="rb-row"><span class="rb-badge">REPLAY${total > 1 ? ` ${idx + 1}/${total}` : ''}</span><span class="flames">${'🔥'.repeat(VB.HL.flames(h.score))}</span>
+        <span class="hl-score">Set ${h.set} · ${esc(h.teams[0].name)} ${h.before[0]}–${h.before[1]} ${esc(h.teams[1].name)}</span></div>
+        <div class="hl-title">${esc(h.title)}</div>${h.detail ? `<div class="hl-detail">${esc(h.detail)}</div>` : ''}
+        <div class="rb-row"><button class="small" data-rp="pause">❚❚ Pause</button>${total > 1 ? '<button class="small" data-rp="next">Next ▸</button>' : ''}<button class="small primary" data-rp="live">Back to live</button></div>`;
+      el.onclick = (e) => {
+        const b = e.target.closest('[data-rp]');
+        if (!b) return;
+        if (b.dataset.rp === 'pause') { this.app.replayPaused = !this.app.replayPaused; b.textContent = this.app.replayPaused ? '▶ Play' : '❚❚ Pause'; }
+        else if (b.dataset.rp === 'next') this.app.nextHighlight();
+        else this.app.stopReplay();
+      };
+    }
+    hideReplay() { $('#replayBar').hidden = true; }
+
     showTab(tab) {
       this.tab = tab;
       VB.store.set('vb.tab', tab);
@@ -190,6 +232,8 @@ var VB = globalThis.VB || (globalThis.VB = {});
       $('#sb-info').textContent = (casual() ? 'Casual · ' : '') + (g.phase === 'over' ? 'Final' : `Set ${g.setNo}${g.isDecidingSet ? ' (deciding)' : ''} · to ${g.setTarget}${s.winBy2 ? ', win by 2' : ''}`);
       this.updateBanner();
       if (g.logVersion !== this.logV) { this.logV = g.logVersion; this.renderLog(); }
+      const rec = g.recorder;
+      if (rec && this.tab === 'hl' && rec.version !== this.hlV) { this.hlV = rec.version; this.renderHighlights(); }
       if (g.statsVersion !== this.statsV) {
         this.statsV = g.statsVersion;
         if (this.tab === 'box') this.renderBox();
@@ -202,7 +246,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       let html = '';
       if (g.phase === 'over' && g.winner) {
         const l = g.other(g.winner);
-        html = `🏆 ${esc(g.winner.name)} win ${g.winner.sets}–${l.sets} <button class="primary" data-act="new">New match</button>`;
+        html = `🏆 ${esc(g.winner.name)} win ${g.winner.sets}–${l.sets} <button data-act="hl">▶ Highlights</button><button class="primary" data-act="new">New match</button>`;
       } else if (g.phase === 'setbreak') {
         const a = g.teams[0], b = g.teams[1];
         const i = a.setScores.length - 1;
@@ -218,6 +262,8 @@ var VB = globalThis.VB || (globalThis.VB = {});
         el.hidden = !html;
         const btn = el.querySelector('[data-act=new]');
         if (btn) btn.onclick = () => this.app.newMatch();
+        const hb = el.querySelector('[data-act=hl]');
+        if (hb) hb.onclick = () => { const r = this.game.recorder; if (r) this.app.playHighlights(r.top(5)); };
       }
     }
 

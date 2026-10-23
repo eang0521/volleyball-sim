@@ -54,6 +54,28 @@ body.panel-open #scoreboard { left: calc((100% - var(--panel-w)) / 2); }
 body.panel-open #banner { left: calc((100% - var(--panel-w)) / 2); }
 #banner button { margin-left: 10px; }
 
+/* ---------- highlights ---------- */
+#replayBar {
+  position: absolute; top: 96px; left: 50%; transform: translateX(-50%); width: min(560px, calc(100vw - 24px));
+  background: rgba(14, 22, 36, 0.94); border: 1px solid rgba(255, 210, 63, 0.45); border-radius: var(--radius);
+  padding: 10px 14px; display: grid; gap: 6px; box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+}
+body.panel-open #replayBar { left: calc((100% - var(--panel-w)) / 2); }
+.rb-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.rb-badge { background: #ffd23f; color: #1a1400; font-weight: 800; font-size: 11px; letter-spacing: 0.08em; padding: 2px 7px; border-radius: 5px; }
+.flames { font-size: 12px; letter-spacing: -2px; }
+.hl-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.hl { border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; display: grid; gap: 4px; }
+.hl-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.hl-score { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.hl-score .dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin: 0 4px; }
+.hl-title { font-weight: 650; }
+.hl-detail { color: var(--muted); font-size: 13px; }
+.hl-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.hl-tags .tag, .tag { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: rgba(255,255,255,0.08); color: var(--muted); }
+.hl button { justify-self: start; }
+button.small { padding: 3px 9px; font-size: 12px; }
+
 /* ---------- controls ---------- */
 #controls {
   position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);

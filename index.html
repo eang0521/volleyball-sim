@@ -29,6 +29,7 @@
   </header>
 
   <div id="banner" hidden></div>
+  <div id="replayBar" hidden></div>
 
   <nav id="controls">
     <button id="btn-new" title="New match (N)">↺ New</button>
@@ -57,11 +58,17 @@
     <div class="tabs" role="tablist">
       <button role="tab" data-tab="log" class="on">Play-by-play</button>
       <button role="tab" data-tab="box">Box score</button>
+      <button role="tab" data-tab="hl">Highlights</button>
       <button role="tab" data-tab="teams">Teams</button>
       <button role="tab" data-tab="settings">Settings</button>
     </div>
     <section class="tab-body" id="tab-log"><ol id="log"></ol></section>
     <section class="tab-body" id="tab-box" hidden><div id="boxscore"></div></section>
+    <section class="tab-body" id="tab-hl" hidden>
+      <div class="row gap"><button id="btn-reel" class="primary">▶ Top 5 reel</button><span class="hint" id="hl-count"></span></div>
+      <ol id="hl-list" class="hl-list"></ol>
+      <p class="hint">Every point is scored for excitement: long rallies, big and diving digs, chase-down saves, hard kills, roofs and aces, with late points in close sets, set and match points weighted most. Replays are kept for the top 8 points of the match.</p>
+    </section>
     <section class="tab-body" id="tab-teams" hidden>
       <div class="row gap">
         <button id="btn-edit-teams" class="primary">Edit teams & stats…</button>
@@ -138,6 +145,7 @@
 <script src="js/physics.js"></script>
 <script src="js/teams.js"></script>
 <script src="js/game.js"></script>
+<script src="js/highlights.js"></script>
 <script src="js/render.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/main.js"></script>

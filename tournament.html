@@ -175,6 +175,11 @@
       <div id="champion" class="champion" hidden></div>
       <div id="poolsArea"></div>
       <div id="bracketArea"></div>
+      <div class="card" id="hlCard" hidden>
+        <div class="row between wrap"><h2>Highlights</h2><button class="primary" id="btnHlReel">▶ Top 10 reel</button></div>
+        <p class="hint">The most exciting points of the tournament: long rallies, big digs and saves, hard kills, roofs and aces, weighted toward late points in close sets and set/match points.</p>
+        <ol id="hlList" class="hl-list"></ol>
+      </div>
       <div class="card" id="leadersCard" hidden>
         <h2>Leaders</h2>
         <div id="leaders" class="leaders"></div>
@@ -199,6 +204,7 @@
     <label class="vchk"><input type="checkbox" id="vNames" checked> Names</label>
     <select id="vCam" aria-label="Camera"><option value="broadcast">Side</option><option value="follow">Follow ball</option><option value="baseline">Baseline</option><option value="orbit">Free orbit</option></select>
     <button id="vFinish">Sim to end</button>
+    <button id="vNext" hidden>Next ▸</button>
     <button id="vClose">Close</button>
   </nav>
 </div>
@@ -210,6 +216,7 @@
 <script src="js/teams.js"></script>
 <script src="js/game.js"></script>
 <script src="js/render.js"></script>
+<script src="js/highlights.js"></script>
 <script src="js/tourney.js"></script>
 <script src="js/tourney-ui.js"></script>
 </body>

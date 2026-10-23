@@ -22,6 +22,19 @@ Open `casual.html` (or add `?mode=casual` to the URL) for a version tuned for a 
 - **⚖️ Balance rotations** (in the editor) tries every possible order and picks the one whose weakest rotation is strongest. Every front row gets a setter option and hitters or blockers, and every back row gets passers. Random casual teams are balanced this way too.
 - Casual mode keeps its own teams and settings, which default to best of 3 on a 2.35 m (co-ed) net.
 
+## Highlights
+
+Every point is recorded as a light replay and scored for excitement:
+- **The rally**: exchanges over the net (weighted more the longer it goes), hard-driven digs, diving digs, chase-down saves and block touches.
+- **The finish**: kill speed, back-row kills, tips, kills off the block, setter dumps, roof blocks (bigger against a hard swing), ace speed, net-cord aces, and transition kills straight after a dig.
+- **The moment**: late points in close sets, deuce, set and match points saved, set- and match-winning points, the deciding set, and comebacks from 5 or more down. Errors count for much less, even when they're clutch.
+
+Each highlight gets a caption, such as *"Set point saved! Fay A. (Orange) puts away a 30 mph back-row kill. After an 8-exchange rally and a diving dig (Hal A.)."*, along with tags and a 🔥 rating. Replays play in 3D with slow motion on the final moment.
+- **Match pages**: open the **Highlights** tab for the ranked list, single replays and a **Top 5 reel**. The match-over banner also has a **▶ Highlights** button.
+- **Tournament**: every match keeps its top 5, including the instantly simulated ones. There's a tournament **Highlights** card with a **Top 10 reel**, and a **★ Highlights** button on each finished match. Replays are kept in the browser's storage (IndexedDB), so they survive a reload.
+
+`node tools/highlights-test.js [casual|competitive] [matches]` prints the top highlights from simulated matches.
+
 ## Tournament
 
 Open `tournament.html` (live: https://eang0521.github.io/volleyball-sim/tournament.html) to run a whole tournament from an open-gym player list. It plays like casual mode, but a referee enforces every rule.

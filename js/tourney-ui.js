@@ -322,10 +322,42 @@
     S.tour = tour;
     save(); renderPlay();
   };
+  // Replays go to IndexedDB; the saved tournament keeps only captions and scores.
+  function stashHighlights(res, m) {
+    if (!res || !res.highlights || !m) return;
+    const A = tById(m.a), B = tById(m.b);
+    const label = `${A.name} vs ${B.name}${m.label ? ' · ' + m.label : ''}`;
+    res.highlights = res.highlights.map((h) => {
+      h.label = label; h.matchId = m.id;
+      VB.HL.store.put(h);
+      return VB.HL.meta(h);
+    });
+  }
+  const allHighlights = () => S.tour.matches.flatMap((m) => (m.result && m.result.highlights) || []).sort((a, b) => b.score - a.score);
+  function hlItem(h) {
+    const [A, B] = h.teams;
+    return `<li class="hl">
+      <div class="hl-top"><span class="flames" title="Excitement ${h.score.toFixed(1)}">${'🔥'.repeat(VB.HL.flames(h.score))}</span><span class="hl-score">Set ${h.set} · <span class="dot" style="background:${A.color}"></span>${h.before[0]}–${h.before[1]}<span class="dot" style="background:${B.color}"></span></span></div>
+      <div class="hl-label">${esc(h.label || '')}</div>
+      <div class="hl-title">${esc(h.title)}</div>
+      ${h.detail ? `<div class="hl-detail">${esc(h.detail)}</div>` : ''}
+      <div class="hl-tags">${h.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</div>
+      <button class="small" data-hlw="${h.id}" ${h.hasReplay ? '' : 'disabled title="No replay kept"'}>▶ Watch</button>
+    </li>`;
+  }
+  function renderTourHighlights() {
+    const list = allHighlights();
+    $('#hlCard').hidden = !list.length;
+    if (!list.length) return;
+    $('#hlList').innerHTML = list.slice(0, 10).map(hlItem).join('');
+  }
+  $('#btnHlReel').onclick = () => viewer.openReplay(allHighlights().filter((h) => h.hasReplay).slice(0, 10));
+
   $('#btnReset').onclick = () => {
     if (sim.busy) return;
     if (!confirm('Reset the tournament? All results will be cleared (teams and settings are kept).')) return;
     S.tour = null; save(); renderPlay();
+    VB.HL.store.clear();
   };
 
   function teamLabel(id) {
@@ -343,7 +375,8 @@
       return `<div class="mt ${win ? 'win' : lose ? 'lose' : ''}">${teamLabel(m[key])}<span class="sc">${sc}</span></div>`;
     };
     const playable = T.isPlayable(m);
-    const act = playable ? `<div class="act"><button class="small" data-watch="${m.id}">▶ Watch</button><button class="small" data-sim="${m.id}">Sim</button></div>` : '';
+    const hls = r && r.highlights && r.highlights.some((h) => h.hasReplay) ? `<button class="small" data-mhl="${m.id}">★ Highlights</button>` : '';
+    const act = !playable && hls ? `<div class="act">${hls}</div>` : playable ? `<div class="act"><button class="small" data-watch="${m.id}">▶ Watch</button><button class="small" data-sim="${m.id}">Sim</button></div>` : '';
     const note = r && r.skipped ? '<div class="lbl2">Not needed</div>' : r && !r.bye && !r.winner ? '<div class="lbl2">Tied on sets</div>' : '';
     const lbl = cls.includes('nolabel') ? '' : `<div class="lbl2">${esc(m.label || '')}</div>`;
     return `<div class="match ${playable ? 'ready' : ''} ${cls}">${lbl}${side('a', 0)}${side('b', 1)}${note}${act}</div>`;
@@ -404,6 +437,7 @@
       $('#bracketArea').innerHTML = tour.config.format === 'pool-playoff' ? `<div class="card"><h2>Playoffs</h2><p class="hint">The bracket is drawn when pool play finishes.</p></div>` : '';
     }
     renderLeaders();
+    renderTourHighlights();
   }
 
   function renderToolbar() {
@@ -441,6 +475,9 @@
     const w = e.target.closest('[data-watch]'), s = e.target.closest('[data-sim]');
     if (w && !sim.busy) viewer.open(w.dataset.watch);
     if (s && !sim.busy) sim.run([s.dataset.sim]);
+    const hw = e.target.closest('[data-hlw]'), mh = e.target.closest('[data-mhl]');
+    if (hw) { const h = allHighlights().find((x) => x.id === hw.dataset.hlw); if (h) viewer.openReplay([h]); }
+    if (mh) { const m = S.tour.matches.find((x) => x.id === mh.dataset.mhl); viewer.openReplay(m.result.highlights.filter((h) => h.hasReplay).sort((a, b) => b.score - a.score)); }
   };
   $('#btnSimNext').onclick = () => { const m = T.nextPlayable(S.tour); if (m) sim.run([m.id]); };
   $('#btnSimAvail').onclick = () => sim.run(S.tour.matches.filter(T.isPlayable).map((m) => m.id));
@@ -493,7 +530,7 @@
         this.inflight.set(id, null);
         setTimeout(() => {
           const j = this.job(id);
-          this.finish(null, { job: id, result: T.simMatch(j.teams, j.settings) });
+          this.finish(null, { job: id, result: T.simMatch(j.teams, j.settings, { highlights: 5 }) });
         }, 16);
       }
     },
@@ -501,7 +538,10 @@
       if (w) w.idle = true;
       this.inflight.delete(data.job);
       if (data.error) { console.error(data.error); }
-      else if (S.tour) { T.applyResult(S.tour, data.job, data.result); this.done++; save(); }
+      else if (S.tour) {
+        stashHighlights(data.result, S.tour.matches.find((m) => m.id === data.job));
+        T.applyResult(S.tour, data.job, data.result); this.done++; save();
+      }
       renderPlay();
       this.pump();
     },
@@ -516,6 +556,8 @@
       this.match = m;
       this.teams = [T.gameTeam(S.tour, m.a), T.gameTeam(S.tour, m.b)];
       this.game = new VB.Game(this.teams, T.gameSettings(S.tour, m, false), 'tournament');
+      VB.HL.attach(this.game, { keep: 5 });
+      this.mode = 'live'; $('#vFinish').hidden = false; $('#vNext').hidden = true;
       $('#viewer').hidden = false;
       document.body.style.overflow = 'hidden';
       if (!this.renderer) this.renderer = new VB.Renderer($('#vStage'));
@@ -530,9 +572,73 @@
       this.raf = requestAnimationFrame((t) => this.frame(t));
       $('#vClose').focus();
     },
+    // ---- highlight replays
+    async openReplay(metas) {
+      if (!metas.length) return;
+      const list = (await Promise.all(metas.map((m) => VB.HL.store.get(m)))).filter(Boolean);
+      if (!list.length) { $('#simStatus').textContent = 'Those replays are no longer saved in this browser.'; return; }
+      this.mode = 'replay'; this.reel = list; this.reelPos = -1; this.game = null;
+      this.recorded = true; this.paused = false;
+      $('#viewer').hidden = false;
+      document.body.style.overflow = 'hidden';
+      if (!this.renderer) this.renderer = new VB.Renderer($('#vStage'));
+      this.renderer.resize();
+      this.renderer.setCameraMode($('#vCam').value);
+      $('#vFinish').hidden = true;
+      $('#vNext').hidden = list.length < 2;
+      $('#vLog').innerHTML = list.map((h, i) => `<li data-i="${i}">${i + 1}. ${esc(h.title)} <span class="hl-label">— ${esc(h.label || '')}</span></li>`).join('');
+      this.nextReplay();
+      this.syncControls();
+      this.last = performance.now();
+      cancelAnimationFrame(this.raf);
+      this.raf = requestAnimationFrame((t) => this.frame(t));
+    },
+    nextReplay() {
+      this.reelPos++;
+      const h = this.reel[this.reelPos];
+      this.hold = 0;
+      if (!h) {
+        this.replay = null;
+        $('#vBanner').innerHTML = `End of highlights. <button id="vAgain">Watch again</button><button class="primary" id="vDone">Back to tournament</button>`;
+        $('#vBanner').hidden = false;
+        $('#vAgain').onclick = () => { this.reelPos = -1; this.nextReplay(); };
+        $('#vDone').onclick = () => this.close(true);
+        return;
+      }
+      this.replay = new VB.HL.Replay(h);
+      VB.C.netTop = h.netTop;
+      this.renderer.setGame(this.replay);
+      $('#vBanner').innerHTML = `<span class="rb-badge">REPLAY${this.reel.length > 1 ? ` ${this.reelPos + 1}/${this.reel.length}` : ''}</span><span class="flames">${'🔥'.repeat(VB.HL.flames(h.score))}</span> ${esc(h.title)}${h.detail ? `<div class="hl-detail">${esc(h.detail)}</div>` : ''}`;
+      $('#vBanner').hidden = false;
+      for (const li of $$('#vLog li')) li.style.fontWeight = +li.dataset.i === this.reelPos ? '700' : '';
+    },
+    replayHud() {
+      const h = this.replay.h, sg = h.sgn || [-1, 1];
+      const li = sg[0] < 0 ? 0 : 1, ri = 1 - li;
+      const set = (side, i) => {
+        $('#vSw' + side).style.background = h.teams[i].color;
+        $('#vName' + side).textContent = h.teams[i].name;
+        $('#vSets' + side).textContent = h.sets[i];
+        $('#vPts' + side).textContent = this.replay.t >= h.pointT ? h.after[i] : h.before[i];
+        $('#vSrv' + side).classList.remove('on');
+      };
+      set('A', li); set('B', ri);
+      $('#vInfo').textContent = `${h.label || ''} · Set ${h.set}`;
+    },
     frame(now) {
       const real = Math.min(0.1, (now - this.last) / 1000);
       this.last = now;
+      if (this.mode === 'replay') {
+        if (this.replay) {
+          if (!this.paused && this.replay.advance(real * this.speed)) { this.hold += real; if (this.hold > 1.2) this.nextReplay(); }
+          if (this.replay) {
+            this.renderer.render(this.paused ? 0 : real * this.replay.rate(), { speed: 1, showMarkers: false, showNames: $('#vNames').checked });
+            this.replayHud();
+          }
+        }
+        this.raf = requestAnimationFrame((t) => this.frame(t));
+        return;
+      }
       const g = this.game, DT = VB.C.DT;
       if (!this.paused && g.phase !== 'over') {
         this.acc += real * (this.finishing ? 0 : this.speed);
@@ -567,6 +673,8 @@
     record() {
       this.recorded = true;
       const res = T.gameResult(this.game, this.teams);
+      res.highlights = this.game.recorder.top(5);
+      stashHighlights(res, this.match);
       T.applyResult(S.tour, this.match.id, res);
       save();
       const g = this.game;
@@ -582,7 +690,8 @@
       cancelAnimationFrame(this.raf);
       $('#viewer').hidden = true;
       document.body.style.overflow = '';
-      this.game = null;
+      this.game = null; this.replay = null; this.mode = 'live';
+      VB.C.netTop = S.config.rules.netHeight;
       renderPlay();
     },
     // Fast-forward to the end in timed chunks (keeps going even if the tab isn't being drawn).
@@ -609,6 +718,7 @@
   for (const b of $$('#vSpeed button')) b.onclick = () => { viewer.speed = +b.dataset.s; viewer.syncControls(); };
   $('#vCam').onchange = (e) => viewer.renderer && viewer.renderer.setCameraMode(e.target.value);
   $('#vFinish').onclick = () => viewer.finish();
+  $('#vNext').onclick = () => viewer.mode === 'replay' && viewer.nextReplay();
   $('#vClose').onclick = () => viewer.close(false);
   window.addEventListener('keydown', (e) => {
     if ($('#viewer').hidden) return;
