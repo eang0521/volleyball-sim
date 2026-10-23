@@ -55,7 +55,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       const d = this.deficit[s] || (this.deficit[s] = [0, 0]);
       const before = ctx.before;
       for (let t = 0; t < 2; t++) d[t] = Math.max(d[t], before[1 - t] - before[t]);
-      this.pending = { ctx, pointT: g.time - this.t0, contacts: g.contacts.slice(), crossings: g.rallyCrossings || 0, comebackFrom: d[ctx.winner] };
+      this.pending = { ctx, t0: this.t0, pointT: g.time - this.t0, contacts: g.contacts.slice(), crossings: g.rallyCrossings || 0, comebackFrom: d[ctx.winner] };
       // One more sample right at the point so the replay has the exact moment.
       this.sample(g);
     }
@@ -113,7 +113,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
     const lastL = [...cs].reverse().find((c) => c.team.idx !== ctx.winner);
     const lastAny = cs[cs.length - 1];
     const lossesContacts = cs.filter((c) => c.team.idx !== ctx.winner).length;
-    let finish = '', finisher = null, kind = 'other';
+    let finish = '', finisher = null, kind = 'other', keyContact = null;
     // Did the winners earn it? Either the ball died on the losers' side, or the losers touched it last
     // while trying to keep it alive (a dig, pass or block they couldn't control).
     const loserFailedPlay = lastAny && lastAny.team.idx !== ctx.winner && ['dig', 'pass', 'reception', 'body', 'block', 'set', 'free'].includes(lastAny.kind);
@@ -121,6 +121,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
     if (ctx.netFault || ctx.reason === 'serveError' || ctx.reason === 'handling' || !earned) kind = 'error';
     else if (lastW && lastW.kind === 'attack') {
       kind = 'kill';
+      keyContact = lastW;
       finisher = lastW.player;
       const mph = Math.round((lastW.speed || 0) * MPH);
       const hard = clamp(((lastW.speed || 0) - 13) / 5, 0, 2.5);
@@ -139,6 +140,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       tags.push('Kill');
     } else if (lastW && lastW.kind === 'block' && lastW.outcome === 'stuff') {
       kind = 'block';
+      keyContact = lastW;
       finisher = lastW.player;
       const atk = [...cs].reverse().find((c) => c.kind === 'attack' && c.team.idx !== ctx.winner);
       s += 2.6 + clamp((((atk && atk.speed) || 0) - 14) / 6, 0, 1.5);
@@ -147,6 +149,7 @@ var VB = globalThis.VB || (globalThis.VB = {});
       tags.push('Block');
     } else if (lastW && lastW.kind === 'serve' && lossesContacts <= 1) {
       kind = 'ace';
+      keyContact = lastW;
       finisher = lastW.player;
       const mph = Math.round((lastW.speed || 0) * MPH);
       s += 1.2 + clamp(((lastW.speed || 0) - 14) / 6, 0, 1.5);
@@ -204,10 +207,21 @@ var VB = globalThis.VB || (globalThis.VB = {});
       id: newId(), score, title, detail, tags: [...new Set(tags)], kind, label,
       set: ctx.setNo, before: ctx.before.slice(), after, sets: ctx.setsBefore.slice(), winner: ctx.winner,
       teams: g.teams.map((t) => ({ name: t.name, color: t.color })), pointT: pend.pointT, exchanges,
+      slow: slowWindow(kind, keyContact, pend),
     };
   };
 
   HL.inOrder = (list) => list.slice().sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+
+  // The stretch of the replay to show in slow motion: the decisive contact (the swing on a kill, the
+  // block, the serve on an ace) until the ball comes down — not the scramble that follows.
+  function slowWindow(kind, key, pend) {
+    const pt = pend.pointT;
+    if (!key) return [pt - 1.0, pt + 0.15];
+    const k = key.time - pend.t0;
+    if (kind === 'ace') return [k - 0.3, Math.min(pt + 0.15, k + 1.6)];
+    return [k - 0.45, Math.min(pt + 0.15, k + 0.6)];
+  }
 
   // 1-5 flames for display.
   HL.flames = (score) => (score >= 14 ? 5 : score >= 9 ? 4 : score >= 6 ? 3 : score >= 3.5 ? 2 : 1);
@@ -235,7 +249,10 @@ var VB = globalThis.VB || (globalThis.VB = {});
       this.apply(0);
     }
     // Slow motion for the decisive moment.
-    rate() { const pt = this.h.pointT; return this.t > pt - 1.3 && this.t < pt + 0.2 ? 0.4 : 1; }
+    rate() {
+      const w = this.h.slow || [this.h.pointT - 1.3, this.h.pointT + 0.2]; // older replays: last moments
+      return this.t > w[0] && this.t < w[1] ? 0.4 : 1;
+    }
     advance(dt) { this.t = Math.min(this.duration, this.t + dt * this.rate()); this.apply(this.t); return this.t >= this.duration; }
     apply(t) {
       const h = this.h, F = h.frames, st = h.stride;
